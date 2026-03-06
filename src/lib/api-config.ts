@@ -45,7 +45,8 @@ interface CustomProvider {
 function normalizeProviderBaseUrl(providerId: string, rawBaseUrl?: string): string | undefined {
   const baseUrl = readTrimmedString(rawBaseUrl)
   if (!baseUrl) return undefined
-  if (getProviderKey(providerId) !== 'openai-compatible') return baseUrl
+  const providerKey = getProviderKey(providerId)
+  if (providerKey !== 'openai-compatible' && providerKey !== 'flow2api') return baseUrl
 
   try {
     const parsed = new URL(baseUrl)

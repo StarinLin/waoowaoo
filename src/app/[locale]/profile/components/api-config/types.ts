@@ -167,6 +167,7 @@ export const PRESET_PROVIDERS: Omit<Provider, 'apiKey' | 'hasApiKey'>[] = [
     { id: 'vidu', name: 'Vidu' },
     { id: 'fal', name: 'FAL' },
     { id: 'qwen', name: 'Qwen' },
+    { id: 'flow2api', name: 'Flow2API', baseUrl: 'http://localhost:8000/v1' },
 ]
 
 const ZH_PROVIDER_NAME_MAP: Record<string, string> = {
@@ -338,6 +339,18 @@ export const PROVIDER_TUTORIALS: ProviderTutorial[] = [
             {
                 text: 'qwen_step1',
                 url: 'https://bailian.console.aliyun.com/cn-beijing/?tab=model#/api-key'
+            }
+        ]
+    },
+    {
+        providerId: 'flow2api',
+        steps: [
+            {
+                text: 'flow2api_step1',
+                url: 'https://github.com/TheSmallHanCat/flow2api'
+            },
+            {
+                text: 'flow2api_step2'
             }
         ]
     }

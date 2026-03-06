@@ -15,9 +15,11 @@ import {
     GoogleGeminiBatchImageGenerator,
     GeminiCompatibleImageGenerator,
     OpenAICompatibleImageGenerator,
+    Flow2APIImageGenerator,
 } from './image'
 import { GoogleVeoVideoGenerator } from './video/google'
 import { OpenAICompatibleVideoGenerator } from './video'
+import { Flow2APIVideoGenerator } from './video'
 import { QwenTTSGenerator } from './audio'
 import { MinimaxVideoGenerator } from './minimax'
 import { ViduVideoGenerator } from './vidu'
@@ -56,6 +58,8 @@ export function createImageGenerator(provider: string, modelId?: string): ImageG
             return new GeminiCompatibleImageGenerator(actualModelId, provider)
         case 'openai-compatible':
             return new OpenAICompatibleImageGenerator(actualModelId, provider)
+        case 'flow2api':
+            return new Flow2APIImageGenerator(actualModelId, provider)
         default:
             throw new Error(`Unknown image generator provider: ${provider}`)
     }
@@ -81,6 +85,8 @@ export function createVideoGenerator(provider: string): VideoGenerator {
             return new ViduVideoGenerator()
         case 'openai-compatible':
             return new OpenAICompatibleVideoGenerator(provider)
+        case 'flow2api':
+            return new Flow2APIVideoGenerator(provider)
         default:
             throw new Error(`Unknown video generator provider: ${provider}`)
     }

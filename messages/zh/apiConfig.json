@@ -106,7 +106,9 @@
       "vidu_step1": "进入生数科技 Vidu 平台，点击「新建 API Key」",
       "openai_compatible_step1": "填写任意 OpenAI 协议兼容服务的 Base URL 与 API Key",
       "gemini_compatible_step1": "填写任意 Gemini 协议兼容服务的 Base URL 与 API Key",
-      "qwen_step1": "进入阿里云百炼平台，获取 API Key"
+      "qwen_step1": "进入阿里云百炼平台，获取 API Key",
+      "flow2api_step1": "部署 Flow2API，并在管理后台设置 API Key",
+      "flow2api_step2": "Base URL 通常为 http://<host>:8000/v1（按你的部署地址修改）"
     }
   }
 }

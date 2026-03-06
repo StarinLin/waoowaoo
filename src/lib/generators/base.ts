@@ -91,12 +91,24 @@ export interface AudioGenerator {
 // ============================================================
 
 export abstract class BaseImageGenerator implements ImageGenerator {
+    protected getMaxRetries(): number {
+        return 2
+    }
+
+    protected getRetryDelayMs(attempt: number): number {
+        return 1000 * attempt
+    }
+
     /**
      * 生成图片（带重试）
      */
     async generate(params: ImageGenerateParams): Promise<GenerateResult> {
-        const maxRetries = 2
+        const maxRetries = this.getMaxRetries()
         let lastError: unknown = null
+
+        if (!Number.isFinite(maxRetries) || maxRetries < 1) {
+            throw new Error(`GENERATOR_RETRY_CONFIG_INVALID: maxRetries=${String(maxRetries)}`)
+        }
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -112,7 +124,13 @@ export abstract class BaseImageGenerator implements ImageGenerator {
                 }
 
                 // 等待后重试
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+                const delayMs = this.getRetryDelayMs(attempt)
+                if (!Number.isFinite(delayMs) || delayMs < 0) {
+                    throw new Error(`GENERATOR_RETRY_CONFIG_INVALID: delayMs=${String(delayMs)}`)
+                }
+                if (delayMs > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delayMs))
+                }
             }
         }
 
@@ -129,9 +147,21 @@ export abstract class BaseImageGenerator implements ImageGenerator {
 }
 
 export abstract class BaseVideoGenerator implements VideoGenerator {
+    protected getMaxRetries(): number {
+        return 2
+    }
+
+    protected getRetryDelayMs(attempt: number): number {
+        return 1000 * attempt
+    }
+
     async generate(params: VideoGenerateParams): Promise<GenerateResult> {
-        const maxRetries = 2
+        const maxRetries = this.getMaxRetries()
         let lastError: unknown = null
+
+        if (!Number.isFinite(maxRetries) || maxRetries < 1) {
+            throw new Error(`GENERATOR_RETRY_CONFIG_INVALID: maxRetries=${String(maxRetries)}`)
+        }
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -141,7 +171,13 @@ export abstract class BaseVideoGenerator implements VideoGenerator {
                 const message = error instanceof Error ? error.message : String(error)
                 _ulogWarn(`[Video Generator] 尝试 ${attempt}/${maxRetries} 失败: ${message}`)
                 if (attempt === maxRetries) break
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+                const delayMs = this.getRetryDelayMs(attempt)
+                if (!Number.isFinite(delayMs) || delayMs < 0) {
+                    throw new Error(`GENERATOR_RETRY_CONFIG_INVALID: delayMs=${String(delayMs)}`)
+                }
+                if (delayMs > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delayMs))
+                }
             }
         }
 
