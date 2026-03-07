@@ -128,14 +128,31 @@ export async function streamFlow2APIChatCompletion(input: {
     }
     const result = parser.push(chunkText)
     if (result.done) {
+      if (result.errorMessage) {
+        throw new Error(`FLOW2API_ERROR: ${result.errorMessage}`)
+      }
       const content = result.content || parser.getFinalContent()
       if (!content) break
       return content
     }
   }
 
+  const flushResult = parser.flush()
+  if (flushResult.done) {
+    if (flushResult.errorMessage) {
+      throw new Error(`FLOW2API_ERROR: ${flushResult.errorMessage}`)
+    }
+    const content = flushResult.content || parser.getFinalContent()
+    if (content) return content
+  }
+
   const finalContent = parser.getFinalContent()
   if (!finalContent) {
+    const finalErrorMessage = parser.getFinalErrorMessage()
+    if (finalErrorMessage) {
+      throw new Error(`FLOW2API_ERROR: ${finalErrorMessage}`)
+    }
+
     const tailParsed = parseJsonIfPossible(transcriptTail)
     const streamErrorMessage = extractFlow2APIErrorMessage(tailParsed) || extractErrorMessage(tailParsed)
     if (streamErrorMessage) {

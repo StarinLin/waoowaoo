@@ -48,4 +48,61 @@ describe('flow2api client errors', () => {
       globalThis.fetch = originalFetch
     }
   })
+
+  it('returns url when SSE success payload omits choices delta', async () => {
+    const originalFetch = globalThis.fetch
+    const streamBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder()
+        controller.enqueue(encoder.encode('data: {"status":"success","url":"http://localhost:8000/tmp/v.mp4"}\n\n'))
+        controller.close()
+      },
+    })
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(streamBody, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as unknown as typeof fetch
+
+    try {
+      const content = await streamFlow2APIChatCompletion({
+        baseUrl: 'http://flow2api-headed:8000/v1',
+        apiKey: 'test',
+        model: 'veo_3_1_i2v_s_fast_fl_portrait',
+        messages: [{ role: 'user', content: 'ping' }],
+      })
+      expect(content).toBe('http://localhost:8000/tmp/v.mp4')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('throws flow2api error when SSE error payload omits choices delta', async () => {
+    const originalFetch = globalThis.fetch
+    const streamBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder()
+        controller.enqueue(encoder.encode('data: {"error":{"message":"provider overloaded"}}\n\n'))
+        controller.close()
+      },
+    })
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(streamBody, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as unknown as typeof fetch
+
+    try {
+      await expect(streamFlow2APIChatCompletion({
+        baseUrl: 'http://flow2api-headed:8000/v1',
+        apiKey: 'test',
+        model: 'veo_3_1_i2v_s_fast_fl_portrait',
+        messages: [{ role: 'user', content: 'ping' }],
+      })).rejects.toThrow('FLOW2API_ERROR: provider overloaded')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })

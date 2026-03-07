@@ -19,6 +19,7 @@ interface CatalogCache {
   entries: BuiltinCapabilityCatalogEntry[]
   exact: Map<string, BuiltinCapabilityCatalogEntry>
   byProviderKey: Map<string, BuiltinCapabilityCatalogEntry>
+  byModelId: Map<string, BuiltinCapabilityCatalogEntry[]>
 }
 
 const CATALOG_DIR = path.resolve(process.cwd(), 'standards/capabilities')
@@ -48,6 +49,13 @@ function getProviderKey(providerId: string): string {
 function cloneCapabilities(capabilities: ModelCapabilities | undefined): ModelCapabilities | undefined {
   if (!capabilities) return undefined
   return JSON.parse(JSON.stringify(capabilities)) as ModelCapabilities
+}
+
+function cloneEntry(entry: BuiltinCapabilityCatalogEntry): BuiltinCapabilityCatalogEntry {
+  return {
+    ...entry,
+    capabilities: cloneCapabilities(entry.capabilities),
+  }
 }
 
 function normalizeEntry(raw: unknown, filePath: string, index: number): BuiltinCapabilityCatalogEntry {
@@ -88,6 +96,7 @@ function normalizeEntry(raw: unknown, filePath: string, index: number): BuiltinC
 function buildCache(entries: BuiltinCapabilityCatalogEntry[], signature: string): CatalogCache {
   const exact = new Map<string, BuiltinCapabilityCatalogEntry>()
   const byProviderKey = new Map<string, BuiltinCapabilityCatalogEntry>()
+  const byModelId = new Map<string, BuiltinCapabilityCatalogEntry[]>()
 
   for (const entry of entries) {
     const modelKey = composeModelKey(entry.provider, entry.modelId)
@@ -104,9 +113,55 @@ function buildCache(entries: BuiltinCapabilityCatalogEntry[], signature: string)
     if (!byProviderKey.has(fallbackKey)) {
       byProviderKey.set(fallbackKey, entry)
     }
+
+    const modelIdKey = `${entry.modelType}::${entry.modelId}`
+    const group = byModelId.get(modelIdKey) || []
+    group.push(entry)
+    byModelId.set(modelIdKey, group)
   }
 
-  return { signature, entries, exact, byProviderKey }
+  return { signature, entries, exact, byProviderKey, byModelId }
+}
+
+function resolveFlow2APIVideoModelIdAliases(modelId: string): string[] {
+  const normalized = modelId.trim().toLowerCase()
+  if (/^veo[_-]?3[_-]?1/.test(normalized)) {
+    return [normalized.includes('fast') ? 'veo-3.1-fast-generate-preview' : 'veo-3.1-generate-preview']
+  }
+  if (/^veo[_-]?3[_-]?0/.test(normalized)) {
+    return [normalized.includes('fast') ? 'veo-3.0-fast-generate-001' : 'veo-3.0-generate-001']
+  }
+  return []
+}
+
+function resolveModelIdLookupCandidates(input: {
+  modelType: UnifiedModelType
+  providerKey: string
+  modelId: string
+}): string[] {
+  const candidates = new Set<string>()
+  const normalizedModelId = input.modelId.trim()
+  if (normalizedModelId) {
+    candidates.add(normalizedModelId)
+  }
+
+  if (input.providerKey === 'flow2api' && input.modelType === 'video') {
+    for (const aliasModelId of resolveFlow2APIVideoModelIdAliases(normalizedModelId)) {
+      candidates.add(aliasModelId)
+    }
+  }
+
+  return Array.from(candidates)
+}
+
+function findUniqueEntryByModelId(
+  loaded: CatalogCache,
+  modelType: UnifiedModelType,
+  modelId: string,
+): BuiltinCapabilityCatalogEntry | null {
+  const candidates = loaded.byModelId.get(`${modelType}::${modelId}`) || []
+  if (candidates.length !== 1) return null
+  return cloneEntry(candidates[0])
 }
 
 function resolveCatalogFiles(): string[] {
@@ -152,10 +207,7 @@ function loadCatalog(): CatalogCache {
 }
 
 export function listBuiltinCapabilityCatalog(): BuiltinCapabilityCatalogEntry[] {
-  return loadCatalog().entries.map((entry) => ({
-    ...entry,
-    capabilities: cloneCapabilities(entry.capabilities),
-  }))
+  return loadCatalog().entries.map(cloneEntry)
 }
 
 /**
@@ -178,20 +230,14 @@ export function findBuiltinCapabilityCatalogEntry(
   const exactKey = `${modelType}::${modelKey}`
   const exactMatch = loaded.exact.get(exactKey)
   if (exactMatch) {
-    return {
-      ...exactMatch,
-      capabilities: cloneCapabilities(exactMatch.capabilities),
-    }
+    return cloneEntry(exactMatch)
   }
 
   const providerKey = getProviderKey(provider)
   const fallbackKey = `${modelType}::${providerKey}::${modelId}`
   const fallback = loaded.byProviderKey.get(fallbackKey)
   if (fallback) {
-    return {
-      ...fallback,
-      capabilities: cloneCapabilities(fallback.capabilities),
-    }
+    return cloneEntry(fallback)
   }
 
   // Fallback: check canonical provider alias (e.g. gemini-compatible → google)
@@ -200,10 +246,14 @@ export function findBuiltinCapabilityCatalogEntry(
     const aliasKey = `${modelType}::${aliasTarget}::${modelId}`
     const aliasMatch = loaded.byProviderKey.get(aliasKey)
     if (aliasMatch) {
-      return {
-        ...aliasMatch,
-        capabilities: cloneCapabilities(aliasMatch.capabilities),
-      }
+      return cloneEntry(aliasMatch)
+    }
+  }
+
+  for (const candidateModelId of resolveModelIdLookupCandidates({ modelType, providerKey, modelId })) {
+    const uniqueMatch = findUniqueEntryByModelId(loaded, modelType, candidateModelId)
+    if (uniqueMatch) {
+      return uniqueMatch
     }
   }
 

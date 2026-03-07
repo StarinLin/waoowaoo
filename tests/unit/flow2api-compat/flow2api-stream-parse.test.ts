@@ -45,4 +45,44 @@ describe('flow2api stream parser + content extraction', () => {
     const content = "<video src='http://localhost:8000/tmp/v.mp4' controls></video>"
     expect(extractVideoUrlFromFlow2APIContent(content)).toBe('http://localhost:8000/tmp/v.mp4')
   })
+
+  it('returns flow2api success url when SSE payload is success json', () => {
+    const parser = new Flow2APISseParser()
+    const sse = 'data: {"status":"success","url":"http://localhost:8000/tmp/v.mp4"}\n\n'
+
+    const result = parser.push(sse)
+
+    expect(result).toEqual({
+      done: true,
+      content: 'http://localhost:8000/tmp/v.mp4',
+    })
+    expect(parser.getFinalContent()).toBe('http://localhost:8000/tmp/v.mp4')
+  })
+
+  it('flushes trailing flow2api success payload without separator', () => {
+    const parser = new Flow2APISseParser()
+    const sse = 'data: {"status":"success","url":"http://localhost:8000/tmp/v.mp4"}'
+
+    const pushResult = parser.push(sse)
+    const flushResult = parser.flush()
+
+    expect(pushResult).toEqual({ done: false })
+    expect(flushResult).toEqual({
+      done: true,
+      content: 'http://localhost:8000/tmp/v.mp4',
+    })
+  })
+
+  it('returns flow2api error message when SSE payload is error json', () => {
+    const parser = new Flow2APISseParser()
+    const sse = 'data: {"error":{"message":"provider overloaded"}}\n\n'
+
+    const result = parser.push(sse)
+
+    expect(result).toEqual({
+      done: true,
+      errorMessage: 'provider overloaded',
+    })
+    expect(parser.getFinalErrorMessage()).toBe('provider overloaded')
+  })
 })
