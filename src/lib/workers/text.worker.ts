@@ -7,6 +7,7 @@ import type { LLMStreamKind } from '@/lib/llm-observe/types'
 import { QUEUE_NAME } from '@/lib/task/queues'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
+import { resolveInsertPanelUserInput } from '@/lib/novel-promotion/insert-panel'
 import {
   executePhase1,
   executePhase2,
@@ -400,14 +401,10 @@ async function handleInsertPanelTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
   const storyboardId = typeof payload.storyboardId === 'string' ? payload.storyboardId : job.data.targetId
   const insertAfterPanelId = typeof payload.insertAfterPanelId === 'string' ? payload.insertAfterPanelId : ''
-  const userInput = typeof payload.userInput === 'string'
-    ? payload.userInput
-    : typeof payload.prompt === 'string'
-      ? payload.prompt
-      : ''
+  const userInput = resolveInsertPanelUserInput(payload, job.data.locale)
 
-  if (!storyboardId || !insertAfterPanelId || !userInput) {
-    throw new Error('insert_panel requires storyboardId/insertAfterPanelId/userInput')
+  if (!storyboardId || !insertAfterPanelId) {
+    throw new Error('insert_panel requires storyboardId/insertAfterPanelId')
   }
 
   const storyboard = await prisma.novelPromotionStoryboard.findUnique({

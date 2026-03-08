@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { ProviderCardProps, ProviderCardTranslator } from './types'
 import { VERIFIABLE_PROVIDER_KEYS } from './types'
 import type { UseProviderCardStateResult } from './hooks/useProviderCardState'
@@ -137,70 +138,73 @@ export function ProviderCardShell({
       </div>
 
       {/* ── 教程弹窗 ── */}
-      {state.showTutorial && state.tutorial && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center glass-overlay"
-          onClick={() => state.setShowTutorial(false)}
-        >
+      {state.showTutorial && state.tutorial && typeof document !== 'undefined'
+        ? createPortal(
           <div
-            className="glass-surface-modal mx-4 w-full max-w-lg overflow-hidden rounded-xl"
-            onClick={(event) => event.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center glass-overlay"
+            onClick={() => state.setShowTutorial(false)}
           >
-            <div className="flex items-center justify-between border-b border-[var(--glass-stroke-base)] px-5 py-4">
-              <div className="flex items-center gap-3">
-                <div className="glass-btn-base glass-btn-primary flex h-8 w-8 items-center justify-center rounded-lg text-white">
-                  <AppIcon name="bookOpen" className="w-4 h-4" />
+            <div
+              className="glass-surface-modal mx-4 w-full max-w-lg overflow-hidden rounded-xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-[var(--glass-stroke-base)] px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="glass-btn-base glass-btn-primary flex h-8 w-8 items-center justify-center rounded-lg text-white">
+                    <AppIcon name="bookOpen" className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--glass-text-primary)]">
+                      {provider.name} {t('tutorial.title')}
+                    </h3>
+                    <p className="text-xs text-[var(--glass-text-secondary)]">{t('tutorial.subtitle')}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--glass-text-primary)]">
-                    {provider.name} {t('tutorial.title')}
-                  </h3>
-                  <p className="text-xs text-[var(--glass-text-secondary)]">{t('tutorial.subtitle')}</p>
-                </div>
+                <button
+                  onClick={() => state.setShowTutorial(false)}
+                  className="glass-btn-base glass-btn-soft rounded-lg p-1.5"
+                >
+                  <AppIcon name="close" className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                onClick={() => state.setShowTutorial(false)}
-                className="glass-btn-base glass-btn-soft rounded-lg p-1.5"
-              >
-                <AppIcon name="close" className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-4 p-5">
-              {state.tutorial.steps.map((step, index) => (
-                <div key={index} className="flex gap-3">
-                  <div className="glass-surface-soft flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--glass-stroke-base)] text-xs font-bold text-[var(--glass-text-secondary)]">
-                    {index + 1}
+              <div className="space-y-4 p-5">
+                {state.tutorial.steps.map((step, index) => (
+                  <div key={index} className="flex gap-3">
+                    <div className="glass-surface-soft flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--glass-stroke-base)] text-xs font-bold text-[var(--glass-text-secondary)]">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1 pt-0.5">
+                      <p className="text-sm leading-relaxed text-[var(--glass-text-secondary)]">
+                        {t(`tutorial.steps.${step.text}`)}
+                      </p>
+                      {step.url && (
+                        <a
+                          href={step.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center gap-1 text-xs text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] hover:underline"
+                        >
+                          <AppIcon name="externalLink" className="w-3 h-3" />
+                          {t('tutorial.openLink')}
+                        </a>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex-1 pt-0.5">
-                    <p className="text-sm leading-relaxed text-[var(--glass-text-secondary)]">
-                      {t(`tutorial.steps.${step.text}`)}
-                    </p>
-                    {step.url && (
-                      <a
-                        href={step.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-1 text-xs text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] hover:underline"
-                      >
-                        <AppIcon name="externalLink" className="w-3 h-3" />
-                        {t('tutorial.openLink')}
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              <div className="flex justify-end border-t border-[var(--glass-stroke-base)] px-5 py-3">
+                <button
+                  onClick={() => state.setShowTutorial(false)}
+                  className="glass-btn-base glass-btn-secondary rounded-lg px-4 py-2 text-sm font-medium"
+                >
+                  {t('tutorial.close')}
+                </button>
+              </div>
             </div>
-            <div className="flex justify-end border-t border-[var(--glass-stroke-base)] px-5 py-3">
-              <button
-                onClick={() => state.setShowTutorial(false)}
-                className="glass-btn-base glass-btn-secondary rounded-lg px-4 py-2 text-sm font-medium"
-              >
-                {t('tutorial.close')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )
+        : null}
 
       {children}
     </div>

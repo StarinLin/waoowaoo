@@ -126,6 +126,7 @@
     "visualStyle": "视觉风格",
     "visualStyleHint": "根据受众选择画面风格，例如：真人风格适合写实剧情，动漫风格适合二次元内容",
     "currentConfigSummary": "当前配置：{ratio} · {style}，后续生成都会使用此组合",
+    "assetLibraryRatioNote": "资产库比例不受影响",
     "moreConfig": "更多配置请点击右上角「 配置」按钮",
     "narration": {
       "title": "启用旁白配音",

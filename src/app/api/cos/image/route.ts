@@ -11,5 +11,5 @@ export const GET = apiHandler(async (request: NextRequest) => {
   }
 
   const location = `/api/storage/sign?key=${encodeURIComponent(key)}&expires=${encodeURIComponent(expires)}`
-  return NextResponse.redirect(location)
+  return NextResponse.redirect(new URL(location, request.url))
 })

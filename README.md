@@ -55,9 +55,12 @@ docker compose up -d
 
 ```bash
 docker compose down -v
+docker rmi ghcr.io/saturndec/waoowaoo:latest
 curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
 docker compose up -d
 ```
+
+> 启动后请**清空浏览器缓存**并重新登录，避免旧版本缓存导致异常。
 
 ### 方式二：克隆仓库 + Docker 构建（完全控制）
 

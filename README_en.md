@@ -47,9 +47,12 @@ docker compose up -d
 
 ```bash
 docker compose down -v
+docker rmi ghcr.io/saturndec/waoowaoo:latest
 curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
 docker compose up -d
 ```
+
+> After starting, please **clear your browser cache** and log in again to avoid issues caused by stale cache.
 
 ### Method 2: Clone & Docker Build (Full Control)
 

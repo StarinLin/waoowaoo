@@ -29,7 +29,7 @@ if ! curl -sf http://127.0.0.1:19000/minio/health/live >/devdev/null 2>&1; then
     read -p "是否尝试自动启动 MinIO? [Y/n] " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        docker compose up -d minio minio-init
+        docker compose up -d minio
         echo -e "${GREEN}✓ MinIO 启动中，等待 5 秒...${NC}"
         sleep 5
     else

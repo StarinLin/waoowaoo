@@ -165,8 +165,6 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
           scriptToStoryboardConsoleMinimized={vm.execution.scriptToStoryboardConsoleMinimized}
           onStoryToScriptMinimizedChange={vm.execution.setStoryToScriptConsoleMinimized}
           onScriptToStoryboardMinimizedChange={vm.execution.setScriptToStoryboardConsoleMinimized}
-          projectId={projectId}
-          episodeId={episodeId}
           hideMinimizedBadges={vm.execution.showCreatingToast}
         />
       </div>

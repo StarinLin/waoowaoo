@@ -21,13 +21,25 @@ const sharedMock = vi.hoisted(() => ({
   collectPanelReferenceImages: vi.fn(async () => ['https://signed.example/ref-character.png']),
   resolveNovelData: vi.fn(async () => ({
     videoRatio: '16:9',
-    characters: [{ name: 'Hero', introduction: '主角' }],
-    locations: [{ name: 'Old Town' }],
+    characters: [{
+      name: 'Hero',
+      introduction: '主角',
+      appearances: [{
+        changeReason: 'default',
+        imageUrls: JSON.stringify(['cos/hero-default.png']),
+        imageUrl: 'cos/hero-default.png',
+      }],
+    }],
+    locations: [{ name: 'Old Town', images: [] }],
   })),
 }))
 
 const outboundMock = vi.hoisted(() => ({
   normalizeReferenceImagesForGeneration: vi.fn(async (refs: string[]) => refs.map((item) => `normalized:${item}`)),
+}))
+
+const promptMock = vi.hoisted(() => ({
+  buildPrompt: vi.fn(() => 'panel-variant-prompt'),
 }))
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
@@ -46,7 +58,7 @@ vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
 })
 vi.mock('@/lib/prompt-i18n', () => ({
   PROMPT_IDS: { NP_AGENT_SHOT_VARIANT_GENERATE: 'np_agent_shot_variant_generate' },
-  buildPrompt: vi.fn(() => 'panel-variant-prompt'),
+  buildPrompt: promptMock.buildPrompt,
 }))
 
 import { handlePanelVariantTask } from '@/lib/workers/handlers/panel-variant-task-handler'
@@ -123,7 +135,7 @@ describe('worker panel-variant-task-handler behavior', () => {
           aspectRatio: '16:9',
           referenceImages: [
             'normalized:https://signed.example/cos/panel-source.png',
-            'normalized:https://signed.example/ref-character.png',
+            'normalized:https://signed.example/cos/hero-default.png',
           ],
         }),
       }),
@@ -139,5 +151,31 @@ describe('worker panel-variant-task-handler behavior', () => {
       storyboardId: 'storyboard-1',
       imageUrl: 'cos/panel-variant-new.png',
     })
+  })
+
+  it('respects reference asset toggles when character/location assets are disabled', async () => {
+    const payload = {
+      newPanelId: 'panel-new',
+      sourcePanelId: 'panel-source',
+      includeCharacterAssets: false,
+      includeLocationAsset: false,
+      variant: {
+        title: '禁用资产版本',
+        description: '只参考原镜头',
+        video_prompt: '只参考原镜头',
+      },
+    }
+
+    await handlePanelVariantTask(buildJob(payload))
+
+    expect(outboundMock.normalizeReferenceImagesForGeneration).toHaveBeenCalledWith([
+      'https://signed.example/cos/panel-source.png',
+    ])
+    expect(promptMock.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      variables: expect.objectContaining({
+        character_assets: '未使用角色参考图',
+        location_asset: '未使用场景参考图',
+      }),
+    }))
   })
 })

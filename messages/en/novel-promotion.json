@@ -126,6 +126,7 @@
     "visualStyle": "Visual Style",
     "visualStyleHint": "Pick a style that matches your audience — e.g. Realistic for live‑action, Anime for 2D content",
     "currentConfigSummary": "Current config: {ratio} · {style}. All subsequent generations will use this combo.",
+    "assetLibraryRatioNote": "Asset library ratios are not affected",
     "moreConfig": "For more configuration options, click the 「 Settings」 button in the top right",
     "narration": {
       "title": "Enable Narration Voiceover",

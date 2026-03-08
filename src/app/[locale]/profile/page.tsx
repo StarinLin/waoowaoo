@@ -80,21 +80,6 @@ export default function ProfilePage() {
                   <span className="font-medium">{t('billingRecords')}</span>
                 </button>
               </nav>
-
-              {/* 下载日志 */}
-              <button
-                onClick={() => {
-                  const a = document.createElement('a')
-                  a.href = '/api/admin/download-logs'
-                  a.download = ''
-                  a.click()
-                }}
-                className="flex items-center gap-2 px-4 py-3 text-sm rounded-xl transition-all cursor-pointer text-[var(--glass-text-secondary)] hover:bg-[var(--glass-bg-muted)]"
-              >
-                <AppIcon name="download" className="w-4 h-4" />
-                {t('downloadLogs')}
-              </button>
-
               {/* 退出登录 */}
               <button
                 onClick={() => signOut({ callbackUrl: '/' })}
