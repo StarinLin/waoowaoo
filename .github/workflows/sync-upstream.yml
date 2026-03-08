@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          sync_workflow_path='.github/workflows/sync-upstream.yml'
+          local_workflow_dir='.github/workflows'
 
           git checkout main
 
@@ -53,9 +53,12 @@ jobs:
             if [ -n "$local_only" ]; then
               while IFS= read -r path; do
                 [ -z "$path" ] && continue
-                if [ "$path" != "$sync_workflow_path" ]; then
+                case "$path" in
+                  "$local_workflow_dir"/*) ;;
+                  *)
                   unexpected_local="${unexpected_local}${path}\n"
-                fi
+                    ;;
+                esac
               done <<< "$local_only"
             fi
 
@@ -70,21 +73,31 @@ jobs:
               exit 0
             fi
 
-            git merge --no-edit upstream/main
+            git merge --no-commit upstream/main
+            git restore --source=HEAD --staged --worktree "$local_workflow_dir"
+
+            if git diff --cached --quiet HEAD --; then
+              git merge --abort
+              echo "Already synced after preserving $local_workflow_dir."
+              echo "did_sync=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            git commit -m "ci: sync upstream -> main"
             echo "did_sync=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "origin/main and upstream/main do not share a merge base."
-          echo "Rebuilding the merge from upstream/main while preserving $sync_workflow_path."
+          echo "Rebuilding the merge from upstream/main while preserving $local_workflow_dir."
 
           git merge --no-commit --strategy=ours --allow-unrelated-histories upstream/main
           git restore --source=upstream/main --staged --worktree -- .
-          git restore --source=HEAD --staged --worktree "$sync_workflow_path"
+          git restore --source=HEAD --staged --worktree "$local_workflow_dir"
 
           if git diff --cached --quiet HEAD --; then
             git merge --abort
-            echo "Already synced after preserving $sync_workflow_path."
+            echo "Already synced after preserving $local_workflow_dir."
             echo "did_sync=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
