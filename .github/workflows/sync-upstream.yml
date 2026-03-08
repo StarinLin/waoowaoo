@@ -56,9 +56,7 @@ jobs:
                 if [ "$path" != "$sync_workflow_path" ]; then
                   unexpected_local="${unexpected_local}${path}\n"
                 fi
-              done <<EOF
-$local_only
-EOF
+              done <<< "$local_only"
             fi
 
             if [ -n "$unexpected_local" ]; then
