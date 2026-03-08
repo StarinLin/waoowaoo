@@ -1,4 +1,5 @@
 import type { CustomModel, Provider } from '../types'
+import type { ProviderApiMode } from '@/lib/provider-api-mode'
 
 export interface ProviderCardDefaultModels {
   analysisModel?: string
@@ -18,6 +19,7 @@ export interface ProviderCardProps {
   onToggleModel: (modelKey: string) => void
   onUpdateApiKey: (providerId: string, apiKey: string) => void
   onUpdateBaseUrl?: (providerId: string, baseUrl: string) => void
+  onUpdateApiMode?: (providerId: string, apiMode: ProviderApiMode) => void
   onDeleteModel: (modelKey: string) => void
   onUpdateModel?: (modelKey: string, updates: Partial<CustomModel>) => void
   onDeleteProvider?: (providerId: string) => void

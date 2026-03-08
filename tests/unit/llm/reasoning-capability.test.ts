@@ -27,6 +27,12 @@ describe('llm/reasoning-capability', () => {
 
     expect(shouldUseOpenAIReasoningProviderOptions({
       providerKey: 'openai-compatible',
+      providerApiMode: 'openai-responses',
+      modelId: 'gpt-5.2',
+    })).toBe(false)
+
+    expect(shouldUseOpenAIReasoningProviderOptions({
+      providerKey: 'openai-compatible',
       modelId: 'gpt-5.2',
     })).toBe(false)
   })

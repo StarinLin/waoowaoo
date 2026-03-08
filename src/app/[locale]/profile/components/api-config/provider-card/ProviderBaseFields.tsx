@@ -6,11 +6,12 @@ import { AppIcon } from '@/components/ui/icons'
 
 interface ProviderBaseFieldsProps {
   provider: ProviderCardProps['provider']
+  onUpdateApiMode?: ProviderCardProps['onUpdateApiMode']
   t: ProviderCardTranslator
   state: UseProviderCardStateResult
 }
 
-export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsProps) {
+export function ProviderBaseFields({ provider, onUpdateApiMode, t, state }: ProviderBaseFieldsProps) {
   const baseUrlPlaceholder = (() => {
     switch (state.providerKey) {
       case 'gemini-compatible':
@@ -156,6 +157,31 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {state.providerKey === 'openai-compatible' && onUpdateApiMode && (
+        <div className="px-3.5 pb-2.5 pt-2">
+          <div className="glass-surface-soft flex items-center gap-2.5 rounded-xl px-3 py-2">
+            <div className="flex w-full items-center gap-2">
+              <span className="w-[64px] shrink-0 whitespace-nowrap text-[12px] font-semibold text-[var(--glass-text-tertiary)]">
+                {t('apiModeLabel')}
+              </span>
+              <div className="relative flex-1">
+                <select
+                  value={provider.apiMode === 'openai-responses' ? 'openai-responses' : 'openai-official'}
+                  onChange={(event) => onUpdateApiMode(provider.id, event.target.value as 'openai-official' | 'openai-responses')}
+                  className="glass-select-base w-full cursor-pointer appearance-none px-3 py-1.5 pr-8 text-[12px]"
+                >
+                  <option value="openai-responses">{t('apiModeResponses')}</option>
+                  <option value="openai-official">{t('apiModeChatCompletions')}</option>
+                </select>
+                <div className="pointer-events-none absolute right-2.5 top-2 text-[var(--glass-text-tertiary)]">
+                  <AppIcon name="chevronDown" className="h-4 w-4" />
+                </div>
+              </div>
             </div>
           </div>
         </div>

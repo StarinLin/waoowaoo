@@ -7,6 +7,7 @@ import {
     type ModelCapabilities,
     type UnifiedModelType,
 } from '@/lib/model-config-contract'
+import type { ProviderApiMode } from '@/lib/provider-api-mode'
 
 // 统一提供商接口
 export interface Provider {
@@ -15,7 +16,7 @@ export interface Provider {
     baseUrl?: string
     apiKey?: string
     hasApiKey?: boolean
-    apiMode?: 'gemini-sdk' | 'openai-official'
+    apiMode?: ProviderApiMode
 }
 
 export interface LlmCustomPricing {

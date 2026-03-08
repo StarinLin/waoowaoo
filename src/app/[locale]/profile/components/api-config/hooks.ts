@@ -16,6 +16,7 @@ import {
     type PricingDisplayMap,
 } from './types'
 import type { CapabilitySelections, CapabilityValue } from '@/lib/model-config-contract'
+import type { ProviderApiMode } from '@/lib/provider-api-mode'
 
 interface DefaultModels {
     analysisModel?: string
@@ -36,6 +37,7 @@ interface UseProvidersReturn {
     saveStatus: 'idle' | 'saving' | 'saved' | 'error'
     updateProviderApiKey: (providerId: string, apiKey: string) => void
     updateProviderBaseUrl: (providerId: string, baseUrl: string) => void
+    updateProviderApiMode: (providerId: string, apiMode: ProviderApiMode) => void
     addProvider: (provider: Omit<Provider, 'hasApiKey'>) => void
     deleteProvider: (providerId: string) => void
     updateProviderInfo: (providerId: string, name: string, baseUrl?: string) => void
@@ -478,6 +480,17 @@ export function useProviders(): UseProvidersReturn {
         })
     }, [performSave])
 
+    const updateProviderApiMode = useCallback((providerId: string, apiMode: ProviderApiMode) => {
+        setProviders(prev => {
+            const next = prev.map(p =>
+                p.id === providerId ? { ...p, apiMode } : p
+            )
+            latestProvidersRef.current = next
+            void performSave(undefined, true)
+            return next
+        })
+    }, [performSave])
+
     // 模型操作
     const toggleModel = useCallback((modelKey: string, providerId?: string) => {
         if (isPresetComingSoonModelKey(modelKey)) {
@@ -589,6 +602,7 @@ export function useProviders(): UseProvidersReturn {
         saveStatus,
         updateProviderApiKey,
         updateProviderBaseUrl,
+        updateProviderApiMode,
         addProvider,
         deleteProvider,
         updateProviderInfo,

@@ -10,6 +10,11 @@ import { getInternalLLMStreamCallbacks } from '../llm-observe/internal-stream-co
 import type { ChatCompletionOptions } from './types'
 import { extractGoogleParts, extractGoogleUsage, GoogleEmptyResponseError } from './providers/google'
 import { buildOpenAIChatCompletion } from './providers/openai-compat'
+import {
+  buildOpenAIResponsesChatCompletion,
+  buildOpenAIResponsesRequest,
+  extractOpenAIResponsesParts,
+} from './providers/openai-responses'
 import { getCompletionParts } from './completion-parts'
 import {
   buildReasoningAwareContent,
@@ -18,6 +23,7 @@ import {
   mapReasoningEffort,
 } from './utils'
 import { shouldUseOpenAIReasoningProviderOptions } from './reasoning-capability'
+import { isOpenAIResponsesApiMode } from '../provider-api-mode'
 import {
   _ulogError,
   _ulogWarn,
@@ -232,6 +238,56 @@ export async function chatCompletion(
 
       const isOpenRouter = !!config.baseUrl?.includes('openrouter')
       const providerName = isOpenRouter ? 'openrouter' : 'openai_compatible'
+      const useResponsesApi = providerKey === 'openai-compatible' && isOpenAIResponsesApiMode(config.apiMode)
+      if (useResponsesApi) {
+        const client = new OpenAI({
+          baseURL: config.baseUrl,
+          apiKey: config.apiKey,
+        })
+        const response = await client.responses.create(
+          buildOpenAIResponsesRequest(resolvedModelId, messages, options),
+        )
+        const responseParts = extractOpenAIResponsesParts(response)
+        if (!responseParts.text && !responseParts.reasoning) {
+          const errorSuffix = response.error?.message
+            ? ` [error: ${response.error.message}]`
+            : ''
+          throw new Error(
+            `LLM_EMPTY_RESPONSE: ${providerName}::${resolvedModelId} 返回空内容` +
+            ` [status: ${response.status ?? 'unknown'}]` +
+            errorSuffix,
+          )
+        }
+
+        const completion = buildOpenAIResponsesChatCompletion(resolvedModelId, response)
+        logLlmRawOutput({
+          userId,
+          projectId,
+          provider: providerName,
+          modelId: resolvedModelId,
+          modelKey: selection.modelKey,
+          stream: false,
+          action: options.action,
+          text: responseParts.text,
+          reasoning: responseParts.reasoning,
+          usage: responseParts.usage,
+        })
+        recordCompletionUsage(resolvedModelId, completion)
+        llmLogger.info({
+          action: 'llm.call.success',
+          message: 'llm call succeeded',
+          provider: providerName,
+          durationMs: Date.now() - attemptStartedAt,
+          details: {
+            model: resolvedModelId,
+            attempt,
+            maxRetries,
+            engine: 'openai_responses',
+          },
+        })
+        return completion
+      }
+
       if (!isOpenRouter) {
         const aiOpenAI = createOpenAI({
           baseURL: config.baseUrl,

@@ -10,6 +10,11 @@ import type { ChatCompletionOptions, ChatCompletionStreamCallbacks } from './typ
 import { extractGoogleParts, extractGoogleUsage, GoogleEmptyResponseError } from './providers/google'
 import { buildOpenAIChatCompletion } from './providers/openai-compat'
 import {
+  buildOpenAIResponsesChatCompletion,
+  buildOpenAIResponsesRequest,
+  extractOpenAIResponsesParts,
+} from './providers/openai-responses'
+import {
   buildReasoningAwareContent,
   extractStreamDeltaParts,
   getConversationMessages,
@@ -32,6 +37,7 @@ import {
 import { getCompletionParts } from './completion-parts'
 import { withStreamChunkTimeout } from './stream-timeout'
 import { shouldUseOpenAIReasoningProviderOptions } from './reasoning-capability'
+import { isOpenAIResponsesApiMode } from '../provider-api-mode'
 
 type GoogleModelClient = {
   generateContentStream?: (params: unknown) => Promise<unknown>
@@ -52,6 +58,28 @@ type OpenAIStreamWithFinal = AsyncIterable<unknown> & {
 
 function supportsArkReasoningEffort(modelId: string): boolean {
   return modelId === 'doubao-seed-1-8-251228' || modelId.startsWith('doubao-seed-2-0-')
+}
+
+function readResponsesStreamErrorMessage(part: unknown): string | null {
+  if (!part || typeof part !== 'object') return null
+
+  const errorEvent = part as {
+    type?: unknown
+    message?: unknown
+    response?: {
+      error?: {
+        message?: unknown
+      } | null
+    }
+  }
+
+  if (errorEvent.type === 'error' && typeof errorEvent.message === 'string') {
+    return errorEvent.message
+  }
+  if (errorEvent.type === 'response.failed' && typeof errorEvent.response?.error?.message === 'string') {
+    return errorEvent.response.error.message
+  }
+  return null
 }
 
 export async function chatCompletionStream(
@@ -334,6 +362,115 @@ export async function chatCompletionStream(
 
       const isOpenRouter = !!config.baseUrl?.includes('openrouter')
       const providerName = isOpenRouter ? 'openrouter' : provider
+      const useResponsesApi = providerKey === 'openai-compatible' && isOpenAIResponsesApiMode(config.apiMode)
+      if (useResponsesApi) {
+        const client = new OpenAI({
+          baseURL: config.baseUrl,
+          apiKey: config.apiKey,
+        })
+
+        emitStreamStage(callbacks, streamStep, 'streaming', providerName)
+        const stream = client.responses.stream(
+          buildOpenAIResponsesRequest(resolvedModelId, messages, options),
+        )
+
+        let text = ''
+        let reasoning = ''
+        let seq = 1
+        const streamErrors: string[] = []
+        for await (const part of withStreamChunkTimeout(stream as AsyncIterable<unknown>)) {
+          const streamError = readResponsesStreamErrorMessage(part)
+          if (streamError) streamErrors.push(streamError)
+
+          const { textDelta, reasoningDelta } = extractStreamDeltaParts(part)
+          if (reasoningDelta) {
+            reasoning += reasoningDelta
+            emitStreamChunk(callbacks, streamStep, {
+              kind: 'reasoning',
+              delta: reasoningDelta,
+              seq,
+              lane: 'reasoning',
+            })
+            seq += 1
+          }
+          if (textDelta) {
+            text += textDelta
+            emitStreamChunk(callbacks, streamStep, {
+              kind: 'text',
+              delta: textDelta,
+              seq,
+              lane: 'main',
+            })
+            seq += 1
+          }
+        }
+
+        const finalResponse = await stream.finalResponse()
+        const finalParts = extractOpenAIResponsesParts(finalResponse)
+        if (finalParts.reasoning && finalParts.reasoning !== reasoning) {
+          const reasoningDelta = finalParts.reasoning.startsWith(reasoning)
+            ? finalParts.reasoning.slice(reasoning.length)
+            : finalParts.reasoning
+          if (reasoningDelta) {
+            emitStreamChunk(callbacks, streamStep, {
+              kind: 'reasoning',
+              delta: reasoningDelta,
+              seq,
+              lane: 'reasoning',
+            })
+            seq += 1
+          }
+          reasoning = finalParts.reasoning
+        }
+        if (finalParts.text && finalParts.text !== text) {
+          const textDelta = finalParts.text.startsWith(text)
+            ? finalParts.text.slice(text.length)
+            : finalParts.text
+          if (textDelta) {
+            emitStreamChunk(callbacks, streamStep, {
+              kind: 'text',
+              delta: textDelta,
+              seq,
+              lane: 'main',
+            })
+            seq += 1
+          }
+          text = finalParts.text
+        }
+
+        if (!text && !reasoning) {
+          const errorMessage = finalResponse.error?.message || streamErrors[0]
+          const errorSuffix = errorMessage ? ` [error: ${errorMessage}]` : ''
+          throw new Error(
+            `LLM_EMPTY_RESPONSE: ${providerName}::${resolvedModelId} 返回空内容` +
+            ` [status: ${finalResponse.status ?? 'unknown'}]` +
+            errorSuffix,
+          )
+        }
+
+        const completion = buildOpenAIResponsesChatCompletion(
+          resolvedModelId,
+          finalResponse,
+          { text, reasoning },
+        )
+        logLlmRawOutput({
+          userId,
+          projectId,
+          provider: providerName,
+          modelId: resolvedModelId,
+          modelKey: selection.modelKey,
+          stream: true,
+          action: options.action,
+          text,
+          reasoning,
+          usage: finalParts.usage,
+        })
+        recordCompletionUsage(resolvedModelId, completion)
+        emitStreamStage(callbacks, streamStep, 'completed', providerName)
+        callbacks?.onComplete?.(text, streamStep)
+        return completion
+      }
+
       const shouldUseAiSdk = !isOpenRouter
       if (shouldUseAiSdk) {
         const aiOpenAI = createOpenAI({

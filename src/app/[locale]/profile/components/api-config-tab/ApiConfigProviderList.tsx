@@ -3,6 +3,7 @@
 import type { CustomModel, Provider } from '../api-config'
 import { ProviderCard, ProviderSection } from '../api-config'
 import { AppIcon } from '@/components/ui/icons'
+import type { ProviderApiMode } from '@/lib/provider-api-mode'
 
 interface DefaultModels {
   analysisModel?: string
@@ -24,6 +25,7 @@ interface ApiConfigProviderListProps {
   onToggleModel: (modelKey: string, providerId: string) => void
   onUpdateApiKey: (providerId: string, apiKey: string) => void
   onUpdateBaseUrl: (providerId: string, baseUrl: string) => void
+  onUpdateApiMode: (providerId: string, apiMode: ProviderApiMode) => void
   onDeleteModel: (modelKey: string, providerId: string) => void
   onUpdateModel: (modelKey: string, updates: Partial<CustomModel>, providerId: string) => void
   onDeleteProvider: (providerId: string) => void
@@ -51,6 +53,7 @@ export function ApiConfigProviderList({
   onToggleModel,
   onUpdateApiKey,
   onUpdateBaseUrl,
+  onUpdateApiMode,
   onDeleteModel,
   onUpdateModel,
   onDeleteProvider,
@@ -83,6 +86,7 @@ export function ApiConfigProviderList({
               onToggleModel={(modelKey) => onToggleModel(modelKey, provider.id)}
               onUpdateApiKey={onUpdateApiKey}
               onUpdateBaseUrl={onUpdateBaseUrl}
+              onUpdateApiMode={onUpdateApiMode}
               onDeleteModel={(modelKey) => onDeleteModel(modelKey, provider.id)}
               onUpdateModel={(modelKey, updates) => onUpdateModel(modelKey, updates, provider.id)}
               onDeleteProvider={onDeleteProvider}

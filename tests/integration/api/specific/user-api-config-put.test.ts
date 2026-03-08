@@ -16,7 +16,7 @@ type SavedProvider = {
   name: string
   baseUrl?: string
   apiKey?: string
-  apiMode?: 'gemini-sdk' | 'openai-official'
+  apiMode?: 'gemini-sdk' | 'openai-official' | 'openai-responses'
 }
 
 const prismaMock = vi.hoisted(() => ({
@@ -216,6 +216,42 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
     const res = await route.PUT(req)
     expect(res.status).toBe(400)
     expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
+  })
+
+  it('accepts openai-compatible provider in openai-responses mode -> persists apiMode', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-1')
+    const route = await import('@/app/api/user/api-config/route')
+
+    const req = buildMockRequest({
+      path: '/api/user/api-config',
+      method: 'PUT',
+      body: {
+        providers: [
+          {
+            id: 'openai-compatible:responses-1',
+            name: 'Responses Gateway',
+            baseUrl: 'https://oa-responses.test/v1',
+            apiKey: 'responses-key',
+            apiMode: 'openai-responses',
+          },
+        ],
+      },
+    })
+
+    const res = await route.PUT(req)
+    expect(res.status).toBe(200)
+
+    const savedProviders = readSavedProvidersFromUpsert()
+    expect(savedProviders).toEqual([
+      {
+        id: 'openai-compatible:responses-1',
+        name: 'Responses Gateway',
+        baseUrl: 'https://oa-responses.test/v1',
+        apiKey: 'enc:responses-key',
+        apiMode: 'openai-responses',
+      },
+    ])
   })
 
   it('accepts openai-compatible provider image/video models', async () => {

@@ -29,8 +29,9 @@ import {
   type PricingApiType,
 } from '@/lib/model-pricing/catalog'
 import { getBillingMode } from '@/lib/billing/mode'
+import { isProviderApiMode, type ProviderApiMode } from '@/lib/provider-api-mode'
 
-type ApiModeType = 'gemini-sdk' | 'openai-official'
+type ApiModeType = ProviderApiMode
 type DefaultModelField =
   | 'analysisModel'
   | 'characterModel'
@@ -388,7 +389,7 @@ function isUnifiedModelType(value: unknown): value is UnifiedModelType {
 }
 
 function isApiMode(value: unknown): value is ApiModeType {
-  return value === 'gemini-sdk' || value === 'openai-official'
+  return isProviderApiMode(value)
 }
 
 function resolveProviderByIdOrKey(providers: StoredProvider[], providerId: string): StoredProvider | null {

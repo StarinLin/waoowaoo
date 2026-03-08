@@ -16,6 +16,7 @@ import { ApiConfigProviderList } from './ApiConfigProviderList'
 import { useApiConfigFilters } from './hooks/useApiConfigFilters'
 import { ModelCapabilityDropdown } from '@/components/ui/config-modals/ModelCapabilityDropdown'
 import { AppIcon } from '@/components/ui/icons'
+import { getDefaultProviderApiMode } from '@/lib/provider-api-mode'
 
 type CustomProviderType = 'gemini-compatible' | 'openai-compatible'
 type DefaultModelField =
@@ -102,6 +103,7 @@ export function ApiConfigTabContainer() {
     saveStatus,
     updateProviderApiKey,
     updateProviderBaseUrl,
+    updateProviderApiMode,
     addProvider,
     deleteProvider,
     toggleModel,
@@ -142,11 +144,13 @@ export function ApiConfigTabContainer() {
     baseUrl: string
     apiKey: string
     apiType: CustomProviderType
+    apiMode: 'gemini-sdk' | 'openai-official' | 'openai-responses'
   }>({
     name: '',
     baseUrl: '',
     apiKey: '',
     apiType: 'gemini-compatible',
+    apiMode: 'gemini-sdk',
   })
 
   const handleAddGeminiProvider = () => {
@@ -168,7 +172,7 @@ export function ApiConfigTabContainer() {
       name,
       baseUrl,
       apiKey,
-      apiMode: newGeminiProvider.apiType === 'openai-compatible' ? 'openai-official' : 'gemini-sdk',
+      apiMode: newGeminiProvider.apiMode,
     })
 
     setNewGeminiProvider({
@@ -176,6 +180,7 @@ export function ApiConfigTabContainer() {
       baseUrl: '',
       apiKey: '',
       apiType: 'gemini-compatible',
+      apiMode: 'gemini-sdk',
     })
     setShowAddGeminiProvider(false)
   }
@@ -186,6 +191,7 @@ export function ApiConfigTabContainer() {
       baseUrl: '',
       apiKey: '',
       apiType: 'gemini-compatible',
+      apiMode: 'gemini-sdk',
     })
     setShowAddGeminiProvider(false)
   }
@@ -361,6 +367,7 @@ export function ApiConfigTabContainer() {
             onToggleModel={toggleModel}
             onUpdateApiKey={updateProviderApiKey}
             onUpdateBaseUrl={updateProviderBaseUrl}
+            onUpdateApiMode={updateProviderApiMode}
             onDeleteModel={deleteModel}
             onUpdateModel={updateModel}
             onDeleteProvider={deleteProvider}
@@ -411,6 +418,7 @@ export function ApiConfigTabContainer() {
                   setNewGeminiProvider({
                     ...newGeminiProvider,
                     apiType: event.target.value as CustomProviderType,
+                    apiMode: getDefaultProviderApiMode(event.target.value) || newGeminiProvider.apiMode,
                   })
                 }
                 className="glass-select-base w-full cursor-pointer appearance-none px-3 py-2.5 pr-8 text-sm"
@@ -459,6 +467,32 @@ export function ApiConfigTabContainer() {
               className="glass-input-base w-full px-3 py-2.5 text-sm font-mono"
             />
           </div>
+
+          {newGeminiProvider.apiType === 'openai-compatible' && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">
+                {t('apiModeLabel')}
+              </label>
+              <div className="relative">
+                <select
+                  value={newGeminiProvider.apiMode}
+                  onChange={(event) =>
+                    setNewGeminiProvider({
+                      ...newGeminiProvider,
+                      apiMode: event.target.value as 'openai-official' | 'openai-responses',
+                    })
+                  }
+                  className="glass-select-base w-full cursor-pointer appearance-none px-3 py-2.5 pr-8 text-sm"
+                >
+                  <option value="openai-responses">{t('apiModeResponses')}</option>
+                  <option value="openai-official">{t('apiModeChatCompletions')}</option>
+                </select>
+                <div className="pointer-events-none absolute right-3 top-3 text-[var(--glass-text-tertiary)]">
+                  <Icons.chevronDown />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">

@@ -14,6 +14,7 @@ import {
   parseModelKeyStrict,
   type UnifiedModelType,
 } from './model-config-contract'
+import { isProviderApiMode, type ProviderApiMode } from './provider-api-mode'
 
 export interface CustomModel {
   modelId: string
@@ -39,7 +40,7 @@ interface CustomProvider {
   name: string
   baseUrl?: string
   apiKey?: string
-  apiMode?: 'gemini-sdk' | 'openai-official'
+  apiMode?: ProviderApiMode
 }
 
 function normalizeProviderBaseUrl(providerId: string, rawBaseUrl?: string): string | undefined {
@@ -121,9 +122,7 @@ function parseCustomProviders(rawProviders: string | null | undefined): CustomPr
     }
 
     const apiModeRaw = raw.apiMode
-    const apiMode = apiModeRaw === 'gemini-sdk' || apiModeRaw === 'openai-official'
-      ? apiModeRaw
-      : undefined
+    const apiMode = isProviderApiMode(apiModeRaw) ? apiModeRaw : undefined
 
     providers.push({
       id,
@@ -308,7 +307,7 @@ export interface ProviderConfig {
   name: string
   apiKey: string
   baseUrl?: string
-  apiMode?: 'gemini-sdk' | 'openai-official'
+  apiMode?: ProviderApiMode
 }
 
 export async function getProviderConfig(userId: string, providerId: string): Promise<ProviderConfig> {
