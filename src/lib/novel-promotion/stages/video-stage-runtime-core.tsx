@@ -38,6 +38,13 @@ import { useVideoDownloadAll } from './video-stage-runtime/useVideoDownloadAll'
 import { useVideoStageUiState } from './video-stage-runtime/useVideoStageUiState'
 import { useVideoPanelViewport } from './video-stage-runtime/useVideoPanelViewport'
 import { useVideoFirstLastFrameFlow } from './video-stage-runtime/useVideoFirstLastFrameFlow'
+import { filterNormalVideoModelOptions } from '@/lib/model-capabilities/video-model-options'
+import {
+  buildVideoSubmissionKey,
+  createVideoSubmissionBaseline,
+  shouldResolveVideoSubmissionLock,
+  type VideoSubmissionBaseline,
+} from './video-stage-runtime/immediate-video-submission'
 
 export type { VideoStageShellProps } from './video-stage-runtime/types'
 
@@ -146,28 +153,14 @@ export function useVideoStageRuntime({
     downloadRemoteBlobMutation,
   })
 
-  const {
-    flModel,
-    flModelOptions,
-    flGenerationOptions,
-    flCapabilityFields,
-    flMissingCapabilityFields,
-    flCustomPrompts,
-    setFlModel,
-    setFlCapabilityValue,
-    setFlCustomPrompt,
-    resetFlCustomPrompt,
-    handleGenerateFirstLastFrame,
-    getDefaultFlPrompt,
-    getNextPanel,
-    isLinkedAsLastFrame,
-  } = useVideoFirstLastFrameFlow({
-    allPanels,
-    linkedPanels,
-    videoModelOptions: userVideoModels || [],
-    onGenerateVideo,
-    t: (key) => t(key as never),
-  })
+  const allVideoModelOptions = useMemo(
+    () => userVideoModels || [],
+    [userVideoModels],
+  )
+  const normalVideoModelOptions = useMemo(
+    () => filterNormalVideoModelOptions(allVideoModelOptions),
+    [allVideoModelOptions],
+  )
 
   const safeTranslate = useCallback((key: string | undefined, fallback = ''): string => {
     if (!key) return fallback
@@ -189,31 +182,30 @@ export function useVideoStageRuntime({
     return unitText ? `${labelText} (${unitText})` : labelText
   }, [safeTranslate])
 
-  const allVideoModelOptions = useMemo(
-    () => userVideoModels || [],
-    [userVideoModels],
-  )
   const [isBatchConfigOpen, setIsBatchConfigOpen] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [isSubmittingVideoBatch, setIsSubmittingVideoBatch] = useState(false)
+  const [submittingVideoPanelKeys, setSubmittingVideoPanelKeys] = useState<Set<string>>(new Set())
+  const [submittingVideoBaselines, setSubmittingVideoBaselines] = useState<Map<string, VideoSubmissionBaseline>>(new Map())
   const [batchSelectedModel, setBatchSelectedModel] = useState('')
   const [batchGenerationOptions, setBatchGenerationOptions] = useState<VideoGenerationOptions>({})
 
   useEffect(() => {
-    if (allVideoModelOptions.length === 0) {
+    if (normalVideoModelOptions.length === 0) {
       if (batchSelectedModel) setBatchSelectedModel('')
       return
     }
-    if (allVideoModelOptions.some((model) => model.value === batchSelectedModel)) return
+    if (normalVideoModelOptions.some((model) => model.value === batchSelectedModel)) return
 
-    const nextDefault = allVideoModelOptions.some((model) => model.value === defaultVideoModel)
+    const nextDefault = normalVideoModelOptions.some((model) => model.value === defaultVideoModel)
       ? defaultVideoModel
-      : ''
+      : (normalVideoModelOptions[0]?.value || '')
     setBatchSelectedModel(nextDefault)
-  }, [allVideoModelOptions, batchSelectedModel, defaultVideoModel])
+  }, [normalVideoModelOptions, batchSelectedModel, defaultVideoModel])
 
   const selectedBatchModelOption = useMemo<VideoModelOption | undefined>(
-    () => allVideoModelOptions.find((option) => option.value === batchSelectedModel),
-    [allVideoModelOptions, batchSelectedModel],
+    () => normalVideoModelOptions.find((option) => option.value === batchSelectedModel),
+    [normalVideoModelOptions, batchSelectedModel],
   )
   const batchPricingTiers = useMemo(
     () => projectVideoPricingTiersByFixedSelections({
@@ -326,9 +318,163 @@ export function useVideoStageRuntime({
     }
   }, [lipSyncMutation])
 
-  const runningCount = allPanels.filter((panel) => panel.videoTaskRunning || panel.lipSyncTaskRunning).length
+  const panelBySubmissionKey = useMemo(() => {
+    const next = new Map<string, (typeof allPanels)[number]>()
+    for (const panel of allPanels) {
+      next.set(buildVideoSubmissionKey(panel), panel)
+    }
+    return next
+  }, [allPanels])
+
+  const handleGenerateVideoWithImmediateLock = useCallback(async (
+    storyboardId: string,
+    panelIndex: number,
+    videoModel?: string,
+    firstLastFrame?: {
+      lastFrameStoryboardId: string
+      lastFramePanelIndex: number
+      flModel: string
+      customPrompt?: string
+    },
+    generationOptions?: VideoGenerationOptions,
+    panelId?: string,
+  ) => {
+    if (isSubmittingVideoBatch) return
+
+    const panelKey = buildVideoSubmissionKey({ panelId, storyboardId, panelIndex })
+    const currentPanel = panelBySubmissionKey.get(panelKey)
+    if (currentPanel?.videoTaskRunning || submittingVideoPanelKeys.has(panelKey)) return
+
+    setSubmittingVideoPanelKeys((previous) => {
+      if (previous.has(panelKey)) return previous
+      const next = new Set(previous)
+      next.add(panelKey)
+      return next
+    })
+    if (currentPanel) {
+      setSubmittingVideoBaselines((previous) => {
+        const next = new Map(previous)
+        next.set(panelKey, createVideoSubmissionBaseline(currentPanel))
+        return next
+      })
+    }
+
+    try {
+      await onGenerateVideo(storyboardId, panelIndex, videoModel, firstLastFrame, generationOptions, panelId)
+    } catch (error) {
+      setSubmittingVideoPanelKeys((previous) => {
+        if (!previous.has(panelKey)) return previous
+        const next = new Set(previous)
+        next.delete(panelKey)
+        return next
+      })
+      setSubmittingVideoBaselines((previous) => {
+        if (!previous.has(panelKey)) return previous
+        const next = new Map(previous)
+        next.delete(panelKey)
+        return next
+      })
+      throw error
+    }
+  }, [
+    isSubmittingVideoBatch,
+    onGenerateVideo,
+    panelBySubmissionKey,
+    submittingVideoPanelKeys,
+  ])
+
+  const {
+    flModel,
+    flModelOptions,
+    flGenerationOptions,
+    flCapabilityFields,
+    flMissingCapabilityFields,
+    flCustomPrompts,
+    setFlModel,
+    setFlCapabilityValue,
+    setFlCustomPrompt,
+    resetFlCustomPrompt,
+    handleGenerateFirstLastFrame,
+    getDefaultFlPrompt,
+    getNextPanel,
+    isLinkedAsLastFrame,
+  } = useVideoFirstLastFrameFlow({
+    allPanels,
+    linkedPanels,
+    videoModelOptions: allVideoModelOptions,
+    onGenerateVideo: handleGenerateVideoWithImmediateLock,
+    t: (key) => t(key as never),
+  })
+
+  useEffect(() => {
+    if (submittingVideoPanelKeys.size === 0) return
+
+    const now = Date.now()
+    setSubmittingVideoPanelKeys((previous) => {
+      let changed = false
+      const next = new Set(previous)
+      for (const key of previous) {
+        if (!shouldResolveVideoSubmissionLock(panelBySubmissionKey.get(key), submittingVideoBaselines.get(key), now)) {
+          continue
+        }
+        next.delete(key)
+        changed = true
+      }
+      return changed ? next : previous
+    })
+    setSubmittingVideoBaselines((previous) => {
+      let changed = false
+      const next = new Map(previous)
+      for (const key of previous.keys()) {
+        if (submittingVideoPanelKeys.has(key) && !shouldResolveVideoSubmissionLock(panelBySubmissionKey.get(key), previous.get(key), now)) {
+          continue
+        }
+        next.delete(key)
+        changed = true
+      }
+      return changed ? next : previous
+    })
+  }, [panelBySubmissionKey, submittingVideoBaselines, submittingVideoPanelKeys])
+
+  useEffect(() => {
+    if (!isSubmittingVideoBatch || allPanels.some((panel) => panel.videoTaskRunning)) {
+      if (isSubmittingVideoBatch && allPanels.some((panel) => panel.videoTaskRunning)) {
+        setIsSubmittingVideoBatch(false)
+      }
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsSubmittingVideoBatch(false)
+    }, 90_000)
+    return () => window.clearTimeout(timeoutId)
+  }, [allPanels, isSubmittingVideoBatch])
+
+  const handleGenerateAllVideosWithImmediateLock = useCallback(async (options?: Parameters<typeof onGenerateAllVideos>[0]) => {
+    if (isSubmittingVideoBatch) return
+    setIsSubmittingVideoBatch(true)
+    try {
+      await onGenerateAllVideos(options)
+    } catch (error) {
+      setIsSubmittingVideoBatch(false)
+      throw error
+    }
+  }, [isSubmittingVideoBatch, onGenerateAllVideos])
+
+  const projectedPanels = useMemo(() => (
+    allPanels.map((panel) => {
+      const panelKey = buildVideoSubmissionKey(panel)
+      if (!isSubmittingVideoBatch && !submittingVideoPanelKeys.has(panelKey)) return panel
+      return {
+        ...panel,
+        videoTaskRunning: true,
+      }
+    })
+  ), [allPanels, isSubmittingVideoBatch, submittingVideoPanelKeys])
+
+  const runningCount = projectedPanels.filter((panel) => panel.videoTaskRunning || panel.lipSyncTaskRunning).length
   const failedCount = allPanels.filter((panel) => !!panel.videoErrorMessage || !!panel.lipSyncErrorMessage).length
-  const isAnyTaskRunning = runningCount > 0
+  const isAnyTaskRunning = runningCount > 0 || isSubmittingVideoBatch
   const canSubmitBatchGenerate = !!batchSelectedModel && batchMissingCapabilityFields.length === 0
 
   const handleOpenBatchGenerateModal = useCallback(() => {
@@ -345,7 +491,7 @@ export function useVideoStageRuntime({
 
     setIsConfirming(true)
     try {
-      await onGenerateAllVideos({
+      await handleGenerateAllVideosWithImmediateLock({
         videoModel: batchSelectedModel,
         generationOptions: batchGenerationOptions,
       })
@@ -357,14 +503,14 @@ export function useVideoStageRuntime({
     batchGenerationOptions,
     batchSelectedModel,
     canSubmitBatchGenerate,
+    handleGenerateAllVideosWithImmediateLock,
     isConfirming,
-    onGenerateAllVideos,
   ])
 
   return (
     <div className="space-y-6 pb-20">
       <VideoToolbar
-        totalPanels={allPanels.length}
+        totalPanels={projectedPanels.length}
         runningCount={runningCount}
         videosWithUrl={videosWithUrl}
         failedCount={failedCount}
@@ -389,14 +535,14 @@ export function useVideoStageRuntime({
       />
 
       <VideoRenderPanel
-        allPanels={allPanels}
+        allPanels={projectedPanels}
         linkedPanels={linkedPanels}
         highlightedPanelKey={highlightedPanelKey}
         panelRefs={panelRefs}
         videoRatio={videoRatio}
         defaultVideoModel={defaultVideoModel}
         capabilityOverrides={capabilityOverrides}
-        userVideoModels={userVideoModels}
+        userVideoModels={normalVideoModelOptions}
         projectId={projectId}
         episodeId={episodeId}
         runningVoiceLineIds={runningVoiceLineIds}
@@ -409,7 +555,7 @@ export function useVideoStageRuntime({
         flCapabilityFields={flCapabilityFields}
         flMissingCapabilityFields={flMissingCapabilityFields}
         flCustomPrompts={flCustomPrompts}
-        onGenerateVideo={onGenerateVideo}
+        onGenerateVideo={handleGenerateVideoWithImmediateLock}
         onUpdatePanelVideoModel={onUpdatePanelVideoModel}
         onLipSync={handleLipSync}
         onToggleLink={handleToggleLink}
@@ -447,7 +593,7 @@ export function useVideoStageRuntime({
             </div>
 
             <ModelCapabilityDropdown
-              models={allVideoModelOptions}
+              models={normalVideoModelOptions}
               value={batchSelectedModel || undefined}
               onModelChange={setBatchSelectedModel}
               capabilityFields={batchCapabilityFields.map((field) => ({

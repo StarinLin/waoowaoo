@@ -7,12 +7,16 @@ import TaskStatusOverlay from '@/components/task/TaskStatusOverlay'
 import type { TaskPresentationState } from '@/lib/task/presentation'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import { AppIcon } from '@/components/ui/icons'
+import ImageGenerationSlotOverlay from '@/components/image-generation/ImageGenerationSlotOverlay'
+import { resolveImageSlotPhase } from '@/lib/image-generation/slot-state'
 
 type SelectionImage = {
   id: string
   imageIndex: number
   imageUrl: string | null
   isSelected?: boolean
+  lastError?: { code: string; message: string } | null
+  imageErrorMessage?: string | null
 }
 
 type LocationImageListProps =
@@ -20,7 +24,7 @@ type LocationImageListProps =
     mode: 'selection'
     locationId: string
     locationName: string
-    imagesWithUrl: SelectionImage[]
+    images: SelectionImage[]
     selectedImageId?: string | null
     selectedIndex: number | null
     isGroupTaskRunning: boolean
@@ -48,29 +52,58 @@ export default function LocationImageList(props: LocationImageListProps) {
   if (props.mode === 'selection') {
     return (
       <div className="grid grid-cols-3 gap-3">
-        {props.imagesWithUrl.map((img) => {
+        {props.images.map((img) => {
           const isThisSelected = props.selectedImageId
             ? img.id === props.selectedImageId
             : img.isSelected
           const isThisTaskRunning = props.isImageTaskRunning(img.imageIndex) || props.isGroupTaskRunning
+          const phase = resolveImageSlotPhase({ imageUrl: img.imageUrl }, isThisTaskRunning)
+          const imageError = resolveErrorDisplay(img.lastError || {
+            code: img.imageErrorMessage || null,
+            message: img.imageErrorMessage || null,
+          })
           return (
             <div key={img.id} className="relative group/thumb">
               <div
-                onClick={() => props.onImageClick(img.imageUrl!)}
-                className={`rounded-lg overflow-hidden border-2 transition-all cursor-pointer relative ${isThisSelected
+                onClick={() => {
+                  if (img.imageUrl) {
+                    props.onImageClick(img.imageUrl)
+                  }
+                }}
+                className={`rounded-lg overflow-hidden border-2 transition-all relative ${img.imageUrl ? 'cursor-pointer' : 'cursor-default'} ${isThisSelected
                   ? 'border-[var(--glass-stroke-success)] ring-2 ring-[var(--glass-focus-ring)]'
                   : 'border-[var(--glass-stroke-base)] hover:border-[var(--glass-stroke-focus)]'
                   }`}
               >
-                <MediaImageWithLoading
-                  src={img.imageUrl!}
-                  alt={t('image.optionAlt', { name: props.locationName, number: img.imageIndex + 1 })}
-                  containerClassName="w-full min-h-[88px]"
-                  className="w-full h-auto object-contain"
-                />
+                {img.imageUrl ? (
+                  <MediaImageWithLoading
+                    src={img.imageUrl}
+                    alt={t('image.optionAlt', { name: props.locationName, number: img.imageIndex + 1 })}
+                    containerClassName="w-full min-h-[88px]"
+                    className="w-full h-auto object-contain"
+                  />
+                ) : (
+                  <div className="flex min-h-[88px] items-center justify-center bg-[var(--glass-bg-muted)]">
+                    {imageError && !isThisTaskRunning ? (
+                      <div className="flex flex-col items-center justify-center px-3 py-6 text-center">
+                        <AppIcon name="alert" className="mb-2 h-6 w-6 text-[var(--glass-tone-danger-fg)]" />
+                        <span className="text-xs font-medium text-[var(--glass-tone-danger-fg)]">{t('common.generateFailed')}</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-2 px-3 py-6 text-[var(--glass-text-tertiary)]">
+                        <div className="h-12 w-12 animate-pulse rounded-xl bg-[var(--glass-bg-surface-strong)]" />
+                        <span className="text-xs">{t('image.generatingPlaceholder')}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                {isThisTaskRunning && (
-                  <TaskStatusOverlay state={props.displayTaskPresentation} />
+                {phase === 'generating' && (
+                  <ImageGenerationSlotOverlay label={t('image.generating')} />
+                )}
+
+                {phase === 'regenerating' && (
+                  <ImageGenerationSlotOverlay label={t('image.regenerating')} />
                 )}
 
                 <div
@@ -86,11 +119,11 @@ export default function LocationImageList(props: LocationImageListProps) {
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (!isThisTaskRunning) {
+                    if (!isThisTaskRunning && img.imageUrl) {
                       props.onSelectImage?.(props.locationId, isThisSelected ? null : img.imageIndex)
                     }
                   }}
-                  disabled={isThisTaskRunning}
+                  disabled={isThisTaskRunning || !img.imageUrl}
                   className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${isThisSelected
                     ? 'bg-[var(--glass-tone-success-fg)] text-white'
                     : 'bg-[var(--glass-bg-surface-strong)] hover:bg-[var(--glass-accent-from)] hover:text-white'

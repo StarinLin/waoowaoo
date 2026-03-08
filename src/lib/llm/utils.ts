@@ -1,5 +1,30 @@
 import type { ChatMessage } from './types'
 
+function splitThinkTaggedContent(input: string): { text: string; reasoning: string } {
+    const thinkTagPattern = /<(think|thinking)\b[^>]*>([\s\S]*?)<\/\1>/gi
+    const reasoningParts: string[] = []
+    let matched = false
+
+    const stripped = input.replace(thinkTagPattern, (_fullMatch, _tagName: string, inner: string) => {
+        matched = true
+        const trimmed = inner.trim()
+        if (trimmed) reasoningParts.push(trimmed)
+        return ''
+    })
+
+    if (!matched) {
+        return {
+            text: input,
+            reasoning: '',
+        }
+    }
+
+    return {
+        text: stripped.trim(),
+        reasoning: reasoningParts.join('\n\n').trim(),
+    }
+}
+
 export function collectTextValue(value: unknown): string {
     if (!value) return ''
     if (typeof value === 'string') return value
@@ -20,10 +45,10 @@ export function collectTextValue(value: unknown): string {
 
 export function extractCompletionPartsFromContent(content: unknown): { text: string; reasoning: string } {
     if (typeof content === 'string') {
-        return { text: content, reasoning: '' }
+        return splitThinkTaggedContent(content)
     }
     if (!Array.isArray(content)) {
-        return { text: collectTextValue(content), reasoning: '' }
+        return splitThinkTaggedContent(collectTextValue(content))
     }
 
     let text = ''
@@ -46,7 +71,9 @@ export function extractCompletionPartsFromContent(content: unknown): { text: str
         if (kind.includes('reason') || kind.includes('think')) {
             reasoning += value
         } else {
-            text += value
+            const parsed = splitThinkTaggedContent(value)
+            text += parsed.text
+            if (parsed.reasoning) reasoning += parsed.reasoning
         }
     }
 

@@ -75,7 +75,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: prismaMock,
 }))
 
-vi.mock('@/lib/cos', () => ({
+vi.mock('@/lib/storage', () => ({
   getSignedUrl: vi.fn((key: string) => `https://signed.example/${key}`),
 }))
 

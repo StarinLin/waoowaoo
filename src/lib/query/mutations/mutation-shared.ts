@@ -1,22 +1,8 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
+import { apiFetch } from '@/lib/api-fetch'
 import { resolveTaskErrorMessage } from '@/lib/task/error-message'
 
-/** 从当前页面 URL 提取 locale 前缀（/zh/... → zh，/en/... → en），默认 zh */
-export function getPageLocale(): string {
-  if (typeof window === 'undefined') return 'zh'
-  const match = window.location.pathname.match(/^\/(zh|en)(\/|$)/)
-  return match?.[1] ?? 'zh'
-}
-
-/** 将 Accept-Language 注入到 RequestInit，已有则不覆盖 */
-function mergeLocaleHeader(init?: RequestInit): RequestInit {
-  const locale = getPageLocale()
-  const headers = new Headers(init?.headers)
-  if (!headers.has('Accept-Language')) {
-    headers.set('Accept-Language', locale)
-  }
-  return { ...init, headers }
-}
+export { getPageLocale } from '@/lib/api-fetch'
 
 export type MutationRequestError = Error & {
   status?: number
@@ -49,7 +35,7 @@ export async function requestJsonWithError<T>(
   init: RequestInit,
   fallbackMessage: string,
 ): Promise<T> {
-  const response = await fetch(input, mergeLocaleHeader(init))
+  const response = await apiFetch(input, init)
   const data = await parseJsonSafe(response)
   if (!response.ok) {
     throw createRequestError(response.status, data, fallbackMessage)
@@ -62,7 +48,7 @@ export async function requestVoidWithError(
   init: RequestInit,
   fallbackMessage: string,
 ): Promise<void> {
-  const response = await fetch(input, mergeLocaleHeader(init))
+  const response = await apiFetch(input, init)
   if (response.ok) return
   const data = await parseJsonSafe(response)
   throw createRequestError(response.status, data, fallbackMessage)
@@ -73,7 +59,7 @@ export async function requestTaskResponseWithError(
   init: RequestInit,
   fallbackMessage: string,
 ): Promise<Response> {
-  const response = await fetch(input, mergeLocaleHeader(init))
+  const response = await apiFetch(input, init)
   if (response.ok) return response
   const data = await parseJsonSafe(response)
   throw createRequestError(response.status, data, fallbackMessage)
@@ -84,7 +70,7 @@ export async function requestBlobWithError(
   init: RequestInit,
   fallbackMessage: string,
 ): Promise<Blob> {
-  const response = await fetch(input, mergeLocaleHeader(init))
+  const response = await apiFetch(input, init)
   if (response.ok) {
     return await response.blob()
   }

@@ -7,8 +7,15 @@ type AuthState = {
 }
 
 type RouteContext = {
+  params: Promise<{ taskId: string }>
+}
+
+type EmptyRouteContext = {
   params: Promise<Record<string, string>>
 }
+
+type ReplayEvent = Awaited<ReturnType<typeof import('@/lib/task/publisher').listEventsAfter>>[number]
+type TaskLifecycleReplayEvent = Awaited<ReturnType<typeof import('@/lib/task/publisher').listTaskLifecycleEvents>>[number]
 
 type TaskRecord = {
   id: string
@@ -34,9 +41,17 @@ const removeTaskJobMock = vi.hoisted(() => vi.fn(async () => true))
 const publishTaskEventMock = vi.hoisted(() => vi.fn(async () => undefined))
 const queryTaskTargetStatesMock = vi.hoisted(() => vi.fn())
 const withPrismaRetryMock = vi.hoisted(() => vi.fn(async <T>(fn: () => Promise<T>) => await fn()))
-const listEventsAfterMock = vi.hoisted(() => vi.fn(async () => []))
-const listTaskLifecycleEventsMock = vi.hoisted(() => vi.fn(async () => []))
-const addChannelListenerMock = vi.hoisted(() => vi.fn(async () => async () => undefined))
+const listEventsAfterMock = vi.hoisted(() =>
+  vi.fn<typeof import('@/lib/task/publisher').listEventsAfter>(async () => []),
+)
+const listTaskLifecycleEventsMock = vi.hoisted(() =>
+  vi.fn<typeof import('@/lib/task/publisher').listTaskLifecycleEvents>(async () => []),
+)
+const addChannelListenerMock = vi.hoisted(() =>
+  vi.fn<(channel: string, listener: (message: string) => void) => Promise<() => Promise<void>>>(
+    async () => async () => undefined,
+  ),
+)
 const subscriberState = vi.hoisted(() => ({
   listener: null as ((message: string) => void) | null,
 }))
@@ -116,6 +131,8 @@ const baseTask: TaskRecord = {
 }
 
 describe('api contract - task infra routes (behavior)', () => {
+  const emptyRouteContext: EmptyRouteContext = { params: Promise.resolve({}) }
+
   beforeEach(() => {
     vi.clearAllMocks()
     authState.authenticated = true
@@ -159,7 +176,7 @@ describe('api contract - task infra routes (behavior)', () => {
       method: 'GET',
       query: { projectId: 'project-1', limit: 20 },
     })
-    const unauthorizedRes = await GET(unauthorizedReq)
+    const unauthorizedRes = await GET(unauthorizedReq, emptyRouteContext)
     expect(unauthorizedRes.status).toBe(401)
 
     authState.authenticated = true
@@ -168,7 +185,7 @@ describe('api contract - task infra routes (behavior)', () => {
       method: 'GET',
       query: { projectId: 'project-1', limit: 20, targetId: 'appearance-1' },
     })
-    const res = await GET(req)
+    const res = await GET(req, emptyRouteContext)
     expect(res.status).toBe(200)
 
     const payload = await res.json() as { tasks: TaskRecord[] }
@@ -189,7 +206,7 @@ describe('api contract - task infra routes (behavior)', () => {
       method: 'POST',
       body: { taskIds: [] },
     })
-    const invalidRes = await POST(invalidReq)
+    const invalidRes = await POST(invalidReq, emptyRouteContext)
     expect(invalidRes.status).toBe(400)
 
     const req = buildMockRequest({
@@ -197,7 +214,7 @@ describe('api contract - task infra routes (behavior)', () => {
       method: 'POST',
       body: { taskIds: ['task-1', 'task-2'] },
     })
-    const res = await POST(req)
+    const res = await POST(req, emptyRouteContext)
     expect(res.status).toBe(200)
 
     const payload = await res.json() as { success: boolean; dismissed: number }
@@ -214,7 +231,7 @@ describe('api contract - task infra routes (behavior)', () => {
       method: 'POST',
       body: { projectId: 'project-1' },
     })
-    const invalidRes = await POST(invalidReq)
+    const invalidRes = await POST(invalidReq, emptyRouteContext)
     expect(invalidRes.status).toBe(400)
 
     const req = buildMockRequest({
@@ -231,7 +248,7 @@ describe('api contract - task infra routes (behavior)', () => {
         ],
       },
     })
-    const res = await POST(req)
+    const res = await POST(req, emptyRouteContext)
     expect(res.status).toBe(200)
 
     const payload = await res.json() as { states: Array<Record<string, unknown>> }
@@ -274,7 +291,7 @@ describe('api contract - task infra routes (behavior)', () => {
 
   it('GET /api/tasks/[taskId]?includeEvents=1: returns lifecycle events for refresh replay', async () => {
     const route = await import('@/app/api/tasks/[taskId]/route')
-    const replayEvents = [
+    const replayEvents: TaskLifecycleReplayEvent[] = [
       {
         id: '11',
         type: 'task.lifecycle',
@@ -287,7 +304,7 @@ describe('api contract - task infra routes (behavior)', () => {
         targetId: 'appearance-1',
         episodeId: null,
         payload: {
-          lifecycleType: 'processing',
+          lifecycleType: 'task.processing',
           stepId: 'clip_1_phase1',
           stepTitle: '分镜规划',
           stepIndex: 1,
@@ -335,7 +352,7 @@ describe('api contract - task infra routes (behavior)', () => {
     const { GET } = await import('@/app/api/sse/route')
 
     const invalidReq = buildMockRequest({ path: '/api/sse', method: 'GET' })
-    const invalidRes = await GET(invalidReq)
+    const invalidRes = await GET(invalidReq, emptyRouteContext)
     expect(invalidRes.status).toBe(400)
 
     authState.authenticated = false
@@ -344,7 +361,7 @@ describe('api contract - task infra routes (behavior)', () => {
       method: 'GET',
       query: { projectId: 'project-1' },
     })
-    const unauthorizedRes = await GET(unauthorizedReq)
+    const unauthorizedRes = await GET(unauthorizedReq, emptyRouteContext)
     expect(unauthorizedRes.status).toBe(401)
   })
 
@@ -363,8 +380,8 @@ describe('api contract - task infra routes (behavior)', () => {
         targetType: 'CharacterAppearance',
         targetId: 'appearance-1',
         episodeId: null,
-        payload: { lifecycleType: 'created' },
-      },
+        payload: { lifecycleType: 'task.created' },
+      } satisfies ReplayEvent,
     ])
 
     const req = buildMockRequest({
@@ -373,7 +390,7 @@ describe('api contract - task infra routes (behavior)', () => {
       query: { projectId: 'project-1' },
       headers: { 'last-event-id': '3' },
     })
-    const res = await GET(req)
+    const res = await GET(req, emptyRouteContext)
 
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toContain('text/event-stream')
@@ -399,7 +416,7 @@ describe('api contract - task infra routes (behavior)', () => {
       query: { projectId: 'project-1' },
       headers: { 'last-event-id': '10' },
     })
-    const res = await GET(req)
+    const res = await GET(req, emptyRouteContext)
     expect(res.status).toBe(200)
 
     const listener = subscriberState.listener

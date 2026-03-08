@@ -1,3 +1,4 @@
+import { safeParseJsonArray } from '@/lib/json-repair'
 import { prisma } from '@/lib/prisma'
 import type { StoryboardPanel } from '@/lib/storyboard-phases'
 
@@ -49,18 +50,11 @@ function parsePanelCharacters(raw: string | null): string[] {
 }
 
 export function parseVoiceLinesJson(responseText: string): JsonRecord[] {
-  let jsonText = responseText.trim()
-  jsonText = jsonText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '')
-  const firstBracket = jsonText.indexOf('[')
-  const lastBracket = jsonText.lastIndexOf(']')
-  if (firstBracket === -1 || lastBracket === -1 || lastBracket <= firstBracket) {
-    throw new Error('voice_analyze: invalid JSON array')
-  }
-  const parsed = JSON.parse(jsonText.slice(firstBracket, lastBracket + 1))
-  if (!Array.isArray(parsed)) {
+  const rows = safeParseJsonArray(responseText)
+  if (rows.length === 0) {
     throw new Error('voice_analyze: invalid payload')
   }
-  return parsed.filter((item): item is JsonRecord => typeof item === 'object' && item !== null)
+  return rows as JsonRecord[]
 }
 
 export function asJsonRecord(value: unknown): JsonRecord | null {
@@ -98,19 +92,25 @@ export async function persistStoryboardsAndPanels(params: {
 }) {
   const { episodeId, clipPanels } = params
   return await prisma.$transaction(async (tx) => {
-    await tx.novelPromotionStoryboard.deleteMany({
-      where: { episodeId },
-    })
-
     const persisted: PersistedStoryboard[] = []
     for (const clipEntry of clipPanels) {
-      const storyboard = await tx.novelPromotionStoryboard.create({
-        data: {
+      const storyboard = await tx.novelPromotionStoryboard.upsert({
+        where: { clipId: clipEntry.clipId },
+        create: {
           clipId: clipEntry.clipId,
           episodeId,
           panelCount: clipEntry.finalPanels.length,
         },
+        update: {
+          panelCount: clipEntry.finalPanels.length,
+          episodeId,
+          lastError: null,
+        },
         select: { id: true, clipId: true },
+      })
+
+      await tx.novelPromotionPanel.deleteMany({
+        where: { storyboardId: storyboard.id },
       })
 
       const persistedPanels: PersistedStoryboard['panels'] = []

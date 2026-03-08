@@ -14,6 +14,7 @@ interface VoiceLine {
     emotionPrompt: string | null
     emotionStrength: number | null
     audioUrl: string | null
+    updatedAt: string | null
     lineTaskRunning: boolean
     matchedPanelId?: string | null
     matchedStoryboardId?: string | null
@@ -55,16 +56,14 @@ export default function VoiceLineCard({
     const [isEmotionExpanded, setIsEmotionExpanded] = useState(false)
     const hasPanelBinding = !!onLocatePanel && !!line.matchedStoryboardId && line.matchedPanelIndex !== null && line.matchedPanelIndex !== undefined
     const locateTitle = t("lineCard.locateVideo")
-    const inlineStatusState = statusState || (
-        isVoiceTaskRunning
-            ? resolveTaskPresentationState({
-                phase: 'processing',
-                intent: 'generate',
-                resource: 'audio',
-                hasOutput: !!line.audioUrl,
-            })
-            : null
-    )
+    const inlineStatusState = isVoiceTaskRunning
+        ? resolveTaskPresentationState({
+            phase: 'processing',
+            intent: 'generate',
+            resource: 'audio',
+            hasOutput: !!line.audioUrl,
+        })
+        : statusState ?? null
 
     return (
         <div

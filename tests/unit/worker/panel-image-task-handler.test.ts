@@ -11,7 +11,7 @@ const prismaMock = vi.hoisted(() => ({
 
 const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
-  getProjectModels: vi.fn(async () => ({ storyboardModel: 'storyboard-model-1', artStyle: 'cinematic' })),
+  getProjectModels: vi.fn(async () => ({ storyboardModel: 'storyboard-model-1', artStyle: 'realistic' })),
   resolveImageSourceFromGeneration: vi.fn(),
   uploadImageSourceToCos: vi.fn(),
 }))
@@ -127,6 +127,7 @@ describe('worker panel-image-task-handler behavior', () => {
       expect.objectContaining({
         modelId: 'storyboard-model-1',
         prompt: 'panel-image-prompt',
+        allowTaskExternalIdResume: false,
         options: expect.objectContaining({
           referenceImages: ['normalized-ref-1'],
           aspectRatio: '16:9',

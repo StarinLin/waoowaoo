@@ -2,7 +2,7 @@
 
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import { useEffect, useState } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { useWorkspaceProvider } from '../WorkspaceProvider'
@@ -18,6 +18,7 @@ import { useWorkspaceStageRuntime } from './useWorkspaceStageRuntime'
 import { useWorkspaceConfigActions } from './useWorkspaceConfigActions'
 import { buildWorkspaceControllerViewModel } from './workspace-controller-view-model'
 import type { NovelPromotionWorkspaceProps } from '../types'
+import { useRouter } from '@/i18n/navigation'
 
 export function useNovelPromotionWorkspaceController({
   project,
@@ -92,6 +93,7 @@ export function useNovelPromotionWorkspaceController({
   const execution = useWorkspaceExecution({
     projectId,
     episodeId,
+    currentStage,
     analysisModel: projectSnapshot.analysisModel,
     novelText: projectSnapshot.novelText,
     t,
@@ -107,7 +109,12 @@ export function useNovelPromotionWorkspaceController({
     t,
   })
 
+  const isStartingStoryToScript = rebuildState.pendingActionType === 'storyToScript'
+  const isStartingScriptToStoryboard = rebuildState.pendingActionType === 'scriptToStoryboard'
+
   const isAnyOperationRunning =
+    isStartingStoryToScript ||
+    isStartingScriptToStoryboard ||
     execution.isSubmittingTTS ||
     execution.isAssetAnalysisRunning ||
     execution.isConfirmingAssets ||
@@ -128,6 +135,8 @@ export function useNovelPromotionWorkspaceController({
     isSubmittingTTS: execution.isSubmittingTTS,
     isTransitioning: execution.isTransitioning,
     isConfirmingAssets: execution.isConfirmingAssets,
+    isStartingStoryToScript,
+    isStartingScriptToStoryboard,
     videoRatio: projectSnapshot.videoRatio,
     artStyle: projectSnapshot.artStyle,
     videoModel: projectSnapshot.videoModel,
@@ -178,6 +187,8 @@ export function useNovelPromotionWorkspaceController({
     isAssetAnalysisRunning: execution.isAssetAnalysisRunning,
     isConfirmingAssets: execution.isConfirmingAssets,
     isTransitioning: execution.isTransitioning,
+    isStartingStoryToScript,
+    isStartingScriptToStoryboard,
     transitionProgress: execution.transitionProgress,
     storyToScriptConsoleMinimized: execution.storyToScriptConsoleMinimized,
     setStoryToScriptConsoleMinimized: execution.setStoryToScriptConsoleMinimized,

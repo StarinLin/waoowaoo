@@ -11,6 +11,8 @@ interface UseWorkspaceStageRuntimeParams {
   isSubmittingTTS: boolean
   isTransitioning: boolean
   isConfirmingAssets: boolean
+  isStartingStoryToScript: boolean
+  isStartingScriptToStoryboard: boolean
   videoRatio: string | undefined
   artStyle: string | undefined
   videoModel: string | undefined
@@ -59,6 +61,8 @@ export function useWorkspaceStageRuntime({
   isSubmittingTTS,
   isTransitioning,
   isConfirmingAssets,
+  isStartingStoryToScript,
+  isStartingScriptToStoryboard,
   videoRatio,
   artStyle,
   videoModel,
@@ -87,6 +91,8 @@ export function useWorkspaceStageRuntime({
     isSubmittingTTS,
     isTransitioning,
     isConfirmingAssets,
+    isStartingStoryToScript,
+    isStartingScriptToStoryboard,
     videoRatio,
     artStyle,
     videoModel,
@@ -122,6 +128,8 @@ export function useWorkspaceStageRuntime({
     handleUpdatePanelVideoModel,
     handleUpdateVideoPrompt,
     isConfirmingAssets,
+    isStartingScriptToStoryboard,
+    isStartingStoryToScript,
     isSubmittingTTS,
     isTransitioning,
     openAssetLibrary,

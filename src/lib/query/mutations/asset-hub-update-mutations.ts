@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { resolveTaskResponse } from '@/lib/task/client'
+import { apiFetch } from '@/lib/api-fetch'
 import {
-  getPageLocale,
   requestJsonWithError,
   requestTaskResponseWithError,
 } from './mutation-shared'
@@ -24,9 +24,9 @@ export function useUpdateCharacterName() {
 
       // 等待图片标签更新完成，确保 onSuccess invalidate 后前端能立即看到新标签
       try {
-        await fetch('/api/asset-hub/update-asset-label', {
+        await apiFetch('/api/asset-hub/update-asset-label', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept-Language': getPageLocale() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'character', id: characterId, newName: name }),
         })
       } catch (e) {
@@ -53,9 +53,9 @@ export function useUpdateLocationName() {
 
       // 等待图片标签更新完成，确保 onSuccess invalidate 后前端能立即看到新标签
       try {
-        await fetch('/api/asset-hub/update-asset-label', {
+        await apiFetch('/api/asset-hub/update-asset-label', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept-Language': getPageLocale() },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'location', id: locationId, newName: name }),
         })
       } catch (e) {

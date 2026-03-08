@@ -75,14 +75,23 @@ export function useGenerateProjectLocationImage(projectId: string) {
         invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
 
     return useMutation({
-        mutationFn: async ({ locationId, imageIndex }: { locationId: string; imageIndex?: number }) => {
+        mutationFn: async ({
+            locationId,
+            imageIndex,
+            count,
+        }: {
+            locationId: string
+            imageIndex?: number
+            count?: number
+        }) => {
             return await requestJsonWithError(`/api/novel-promotion/${projectId}/generate-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     type: 'location',
                     id: locationId,
-                    imageIndex
+                    imageIndex,
+                    count,
                 })
             }, 'Failed to generate image')
         },
@@ -196,13 +205,14 @@ export function useRegenerateLocationGroup(projectId: string) {
         invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
 
     return useMutation({
-        mutationFn: async ({ locationId }: { locationId: string }) => {
+        mutationFn: async ({ locationId, count }: { locationId: string; count?: number }) => {
             return await requestJsonWithError(`/api/novel-promotion/${projectId}/regenerate-group`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     type: 'location',
                     id: locationId,
+                    count,
                 })
             }, 'Failed to regenerate group')
         },

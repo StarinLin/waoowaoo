@@ -1,8 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const taskEventFindManyMock = vi.hoisted(() => vi.fn(async () => []))
-const taskEventCreateMock = vi.hoisted(() => vi.fn(async () => null))
-const taskFindManyMock = vi.hoisted(() => vi.fn(async () => []))
+type TaskEventRow = {
+  id: number
+  taskId: string
+  projectId: string
+  userId: string
+  eventType: string
+  payload: Record<string, unknown> | null
+  createdAt: Date
+}
+
+type TaskMeta = {
+  id: string
+  type: string
+  targetType: string
+  targetId: string
+  episodeId: string | null
+}
+
+const taskEventFindManyMock = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<TaskEventRow[]>>(async () => []),
+)
+const taskEventCreateMock = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<TaskEventRow | null>>(async () => null),
+)
+const taskFindManyMock = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<TaskMeta[]>>(async () => []),
+)
 const redisPublishMock = vi.hoisted(() => vi.fn(async () => 1))
 
 vi.mock('@/lib/prisma', () => ({

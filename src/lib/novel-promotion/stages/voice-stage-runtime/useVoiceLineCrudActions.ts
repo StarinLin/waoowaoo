@@ -3,7 +3,7 @@
 import { useCallback } from 'react'
 import { shouldShowError } from '@/lib/error-utils'
 import { getErrorMessage } from './utils'
-import type { VoiceLine } from './types'
+import type { PendingVoiceGenerationMap, VoiceLine } from './types'
 
 interface MutationLike<TInput = unknown, TOutput = unknown> {
   mutateAsync: (input: TInput) => Promise<TOutput>
@@ -18,7 +18,7 @@ interface UseVoiceLineCrudActionsParams {
   editingSpeaker: string
   editingMatchedPanelId: string
   setVoiceLines: React.Dispatch<React.SetStateAction<VoiceLine[]>>
-  setSubmittingVoiceLineIds: React.Dispatch<React.SetStateAction<Set<string>>>
+  setPendingVoiceGenerationByLineId: React.Dispatch<React.SetStateAction<PendingVoiceGenerationMap>>
   setIsSavingLineEditor: (value: boolean) => void
   getBoundPanelIdForLine: (line: VoiceLine) => string
   handleCancelEdit: () => void
@@ -37,7 +37,7 @@ export function useVoiceLineCrudActions({
   editingSpeaker,
   editingMatchedPanelId,
   setVoiceLines,
-  setSubmittingVoiceLineIds,
+  setPendingVoiceGenerationByLineId,
   setIsSavingLineEditor,
   getBoundPanelIdForLine,
   handleCancelEdit,
@@ -131,10 +131,10 @@ export function useVoiceLineCrudActions({
         const filtered = prev.filter((item) => item.id !== lineId)
         return filtered.map((item, index) => ({ ...item, lineIndex: index + 1 }))
       })
-      setSubmittingVoiceLineIds((prev) => {
-        if (!prev.has(lineId)) return prev
-        const next = new Set(prev)
-        next.delete(lineId)
+      setPendingVoiceGenerationByLineId((prev) => {
+        if (!(lineId in prev)) return prev
+        const next = { ...prev }
+        delete next[lineId]
         return next
       })
       notifyVoiceLinesChanged()
@@ -146,7 +146,7 @@ export function useVoiceLineCrudActions({
   }, [
     deleteVoiceLineMutation,
     notifyVoiceLinesChanged,
-    setSubmittingVoiceLineIds,
+    setPendingVoiceGenerationByLineId,
     setVoiceLines,
     t,
     voiceLines,

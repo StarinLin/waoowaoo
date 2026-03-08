@@ -2,7 +2,7 @@ import path from 'node:path'
 import { createScopedLogger } from '@/lib/logging/core'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 
-type CosHelpers = Pick<typeof import('@/lib/cos'), 'getSignedUrl' | 'toFetchableUrl'>
+type StorageHelpers = Pick<typeof import('@/lib/storage'), 'getSignedUrl' | 'toFetchableUrl'>
 
 type InputIssueReason =
   | 'next_image_unwrapped'
@@ -83,16 +83,16 @@ const MIME_BY_EXT: Record<string, string> = {
   '.m4a': 'audio/mp4',
 }
 
-let cosHelpersPromise: Promise<CosHelpers> | null = null
+let storageHelpersPromise: Promise<StorageHelpers> | null = null
 
-async function getCosHelpers(): Promise<CosHelpers> {
-  if (!cosHelpersPromise) {
-    cosHelpersPromise = import('@/lib/cos').then((mod) => ({
+async function getStorageHelpers(): Promise<StorageHelpers> {
+  if (!storageHelpersPromise) {
+    storageHelpersPromise = import('@/lib/storage').then((mod) => ({
       getSignedUrl: mod.getSignedUrl,
       toFetchableUrl: mod.toFetchableUrl,
     }))
   }
-  return await cosHelpersPromise
+  return await storageHelpersPromise
 }
 
 function normalizeInput(input: string): string {
@@ -173,12 +173,12 @@ function guessContentType(input: string, contentTypeHeader: string | null): stri
 }
 
 async function signStorageKey(storageKey: string): Promise<string> {
-  const { getSignedUrl, toFetchableUrl } = await getCosHelpers()
+  const { getSignedUrl, toFetchableUrl } = await getStorageHelpers()
   return toFetchableUrl(getSignedUrl(storageKey, SIGNED_URL_TTL_SECONDS))
 }
 
 async function toFetchableAbsoluteUrl(value: string): Promise<string> {
-  const { toFetchableUrl } = await getCosHelpers()
+  const { toFetchableUrl } = await getStorageHelpers()
   return toFetchableUrl(value)
 }
 

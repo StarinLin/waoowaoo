@@ -12,17 +12,21 @@ import { shouldShowError } from '@/lib/error-utils'
 import { useUploadProjectLocationImage } from '@/lib/query/mutations'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
+import ImageGenerationInlineCountButton from '@/components/image-generation/ImageGenerationInlineCountButton'
 import LocationCardHeader from './location-card/LocationCardHeader'
 import LocationImageList from './location-card/LocationImageList'
 import LocationCardActions from './location-card/LocationCardActions'
+import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
+import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
+import { countGeneratedImageSlots, shouldShowImageSlotGrid } from '@/lib/image-generation/slot-state'
 import { AppIcon } from '@/components/ui/icons'
 
 interface LocationCardProps {
   location: Location
   onEdit: () => void
   onDelete: () => void
-  onRegenerate: () => void
-  onGenerate: () => void
+  onRegenerate: (count?: number) => void
+  onGenerate: (count?: number) => void
   onUndo?: () => void  // 撤回到上一版本
   onImageClick: (imageUrl: string) => void
   onSelectImage?: (locationId: string, imageIndex: number | null) => void
@@ -52,6 +56,7 @@ export default function LocationCard({
   // 🔥 使用 mutation
   const uploadImage = useUploadProjectLocationImage(projectId)
   const t = useTranslations('assets')
+  const { count: generationCount, setCount: setGenerationCount } = useImageGenerationCount('location')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [pendingUploadIndex, setPendingUploadIndex] = useState<number | undefined>(undefined)
   const [isConfirmingSelection, setIsConfirmingSelection] = useState(false)
@@ -95,14 +100,17 @@ export default function LocationCard({
     )
   }
 
-  // 获取有图片的记录
-  const imagesWithUrl = location.images?.filter(img => img.imageUrl) || []
-  const hasMultipleImages = imagesWithUrl.length > 1
+  const orderedImages = [...(location.images || [])].sort((left, right) => left.imageIndex - right.imageIndex)
+  const imagesWithUrl = orderedImages.filter((img) => img.imageUrl)
+  const totalImageCount = orderedImages.length
+  const generatedImageCount = countGeneratedImageSlots(orderedImages)
+  const hasAnyImageError = orderedImages.some((img) => !!(img.lastError || img.imageErrorMessage))
+  const hasMultipleImages = totalImageCount > 1
 
   // 获取选中的图片
   const selectedImage = location.selectedImageId
-    ? location.images?.find(img => img.id === location.selectedImageId)
-    : location.images?.find(img => img.isSelected)
+    ? orderedImages.find((img) => img.id === location.selectedImageId)
+    : orderedImages.find((img) => img.isSelected)
   const selectedIndex = selectedImage?.imageIndex ?? null
 
   // 当前显示的图片及其 imageIndex
@@ -162,24 +170,39 @@ export default function LocationCard({
   // 检查是否有历史版本（用于撤回功能）
   const hasPreviousVersion = location.images?.some(img => img.previousImageUrl) || false
 
-  const showSelectionMode = hasMultipleImages
+  const showSelectionMode = shouldShowImageSlotGrid({
+    totalSlotCount: totalImageCount,
+    generatedCount: generatedImageCount,
+    hasRunningTask: isTaskRunning,
+    hasAnyError: hasAnyImageError,
+  })
 
   // 选择模式：显示名字在上，三张图片在下
   if (showSelectionMode) {
+    const selectionStatusText = isTaskRunning || generatedImageCount < totalImageCount
+      ? t('image.generatedProgress', { generated: generatedImageCount, total: totalImageCount })
+      : selectedIndex !== null
+        ? t('image.optionSelected', { number: selectedIndex + 1 })
+        : t('image.selectFirst')
+
     const selectionHeaderActions = (
       <>
-        <button
-          onClick={onRegenerate}
-          disabled={isTaskRunning || isAnyTaskRunning || uploadImage.isPending}
-          className="w-6 h-6 rounded hover:bg-[var(--glass-tone-info-bg)] flex items-center justify-center transition-colors disabled:opacity-50"
-          title={t('image.regenerateGroup')}
-        >
-          {isGroupTaskRunning ? (
+        <ImageGenerationInlineCountButton
+          prefix={isGroupTaskRunning ? (
             <TaskStatusInline state={displayTaskPresentation} className="[&_span]:sr-only [&_svg]:text-[var(--glass-tone-info-fg)]" />
           ) : (
             <AppIcon name="refresh" className="w-4 h-4 text-[var(--glass-tone-info-fg)]" />
           )}
-        </button>
+          suffix={null}
+          value={generationCount}
+          options={getImageGenerationCountOptions('location')}
+          onValueChange={setGenerationCount}
+          onClick={() => onRegenerate(generationCount)}
+          disabled={isTaskRunning || isAnyTaskRunning || uploadImage.isPending}
+          ariaLabel={t('image.selectCount')}
+          className="inline-flex h-6 items-center gap-0.5 rounded px-1 hover:bg-[var(--glass-tone-info-bg)] transition-colors disabled:opacity-50"
+          selectClassName="appearance-none bg-transparent border-0 pl-0 pr-3 text-[10px] font-semibold text-[var(--glass-tone-info-fg)] outline-none cursor-pointer leading-none transition-colors"
+        />
         {onUndo && hasPreviousVersion && (
           <button
             onClick={onUndo}
@@ -214,6 +237,7 @@ export default function LocationCard({
           locationName={location.name}
           summary={location.summary}
           selectedIndex={selectedIndex}
+          statusText={selectionStatusText}
           actions={selectionHeaderActions}
         />
 
@@ -221,7 +245,7 @@ export default function LocationCard({
           mode="selection"
           locationId={location.id}
           locationName={location.name}
-          imagesWithUrl={imagesWithUrl}
+          images={orderedImages}
           selectedImageId={location.selectedImageId}
           selectedIndex={selectedIndex}
           isGroupTaskRunning={isGroupTaskRunning}
@@ -273,7 +297,7 @@ export default function LocationCard({
         </button>
       )}
       <button
-        onClick={onRegenerate}
+        onClick={() => onRegenerate()}
         disabled={uploadImage.isPending || isTaskRunning}
         className={`w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm active:scale-90 ${isTaskRunning
           ? 'bg-[var(--glass-tone-success-fg)] hover:bg-[var(--glass-tone-success-fg)]'
@@ -367,6 +391,8 @@ export default function LocationCard({
         currentImageUrl={currentImageUrl}
         isTaskRunning={isTaskRunning}
         hasDescription={hasDescription}
+        generationCount={generationCount}
+        onGenerationCountChange={setGenerationCount}
         onGenerate={onGenerate}
       />
     </div>

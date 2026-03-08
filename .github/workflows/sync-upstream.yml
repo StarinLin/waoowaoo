@@ -1,0 +1,111 @@
+name: Sync upstream -> main
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        env:
+          UPSTREAM_URL: https://github.com/saturndec/waoowaoo.git
+        run: |
+          if git remote get-url upstream >/dev/null 2>&1; then
+            test "$(git remote get-url upstream)" = "$UPSTREAM_URL"
+          else
+            git remote add upstream "$UPSTREAM_URL"
+          fi
+          git fetch --prune upstream main
+
+      - name: Sync upstream/main
+        id: sync
+        run: |
+          set -euo pipefail
+
+          local_workflow_dir='.github/workflows'
+
+          git checkout main
+
+          merge_base=''
+          if merge_base="$(git merge-base HEAD upstream/main 2>/dev/null)"; then
+            local_only="$(git diff --name-only "$merge_base"..HEAD)"
+            unexpected_local=''
+
+            if [ -n "$local_only" ]; then
+              while IFS= read -r path; do
+                [ -z "$path" ] && continue
+                case "$path" in
+                  "$local_workflow_dir"/*) ;;
+                  *)
+                  unexpected_local="${unexpected_local}${path}\n"
+                    ;;
+                esac
+              done <<< "$local_only"
+            fi
+
+            if [ -n "$unexpected_local" ]; then
+              printf 'Unexpected origin/main-only changes since merge base:\n%b' "$unexpected_local"
+              exit 1
+            fi
+
+            if git diff --quiet "$merge_base"..upstream/main; then
+              echo "Already synced; upstream/main has no changes since the merge base."
+              echo "did_sync=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            git merge --no-commit upstream/main
+            git restore --source=HEAD --staged --worktree "$local_workflow_dir"
+
+            if git diff --cached --quiet HEAD --; then
+              git merge --abort
+              echo "Already synced after preserving $local_workflow_dir."
+              echo "did_sync=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            git commit -m "ci: sync upstream -> main"
+            echo "did_sync=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "origin/main and upstream/main do not share a merge base."
+          echo "Rebuilding the merge from upstream/main while preserving $local_workflow_dir."
+
+          git merge --no-commit --strategy=ours --allow-unrelated-histories upstream/main
+          git restore --source=upstream/main --staged --worktree -- .
+          git restore --source=HEAD --staged --worktree "$local_workflow_dir"
+
+          if git diff --cached --quiet HEAD --; then
+            git merge --abort
+            echo "Already synced after preserving $local_workflow_dir."
+            echo "did_sync=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git commit -m "ci: sync upstream -> main"
+          echo "did_sync=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push
+        if: steps.sync.outputs.did_sync == 'true'
+        run: |
+          git push origin main

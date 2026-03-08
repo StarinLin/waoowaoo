@@ -1,5 +1,10 @@
 import type { Job } from 'bullmq'
-import { createVoiceDesign, validatePreviewText, validateVoicePrompt, type VoiceDesignInput } from '@/lib/qwen-voice-design'
+import {
+  createVoiceDesign,
+  validatePreviewText,
+  validateVoicePrompt,
+  type VoiceDesignInput,
+} from '@/lib/providers/bailian/voice-design'
 import { getProviderConfig } from '@/lib/api-config'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
@@ -41,7 +46,7 @@ export async function handleVoiceDesignTask(job: Job<TaskJobData>) {
   })
   await assertTaskActive(job, 'voice_design_submit')
 
-  const { apiKey } = await getProviderConfig(job.data.userId, 'qwen')
+  const { apiKey } = await getProviderConfig(job.data.userId, 'bailian')
   const input: VoiceDesignInput = {
     voicePrompt,
     previewText,

@@ -53,7 +53,7 @@ export interface ModelCustomPricing {
 }
 
 const DEFAULT_VOICE_MODEL_ID = 'index-tts2'
-const DEFAULT_VOICE_DESIGN_MODEL_ID = 'qwen-voice-design'
+const DEFAULT_VOICE_DESIGN_MODEL_ID = 'bailian-voice-design'
 const DEFAULT_LIP_SYNC_MODEL_ID = 'kling'
 
 function getMarkup(category: MarkupCategory): number {

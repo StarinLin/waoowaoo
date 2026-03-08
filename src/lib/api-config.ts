@@ -14,6 +14,11 @@ import {
   parseModelKeyStrict,
   type UnifiedModelType,
 } from './model-config-contract'
+import type {
+  OpenAICompatMediaTemplate,
+  OpenAICompatMediaTemplateSource,
+} from './openai-compat-media-template'
+import { validateOpenAICompatMediaTemplate } from './user-api/model-template/validator'
 import { isProviderApiMode, type ProviderApiMode } from './provider-api-mode'
 
 export interface CustomModel {
@@ -22,6 +27,11 @@ export interface CustomModel {
   name: string
   type: UnifiedModelType
   provider: string
+  llmProtocol?: 'responses' | 'chat-completions'
+  llmProtocolCheckedAt?: string
+  compatMediaTemplate?: OpenAICompatMediaTemplate
+  compatMediaTemplateCheckedAt?: string
+  compatMediaTemplateSource?: OpenAICompatMediaTemplateSource
   // Non-authoritative display field; billing uses unified server pricing catalog.
   price: number
 }
@@ -33,7 +43,11 @@ export interface ModelSelection {
   modelId: string
   modelKey: string
   mediaType: ModelMediaType
+  llmProtocol?: 'responses' | 'chat-completions'
+  compatMediaTemplate?: OpenAICompatMediaTemplate
 }
+
+type GatewayRouteType = 'official' | 'openai-compat'
 
 interface CustomProvider {
   id: string
@@ -41,12 +55,19 @@ interface CustomProvider {
   baseUrl?: string
   apiKey?: string
   apiMode?: ProviderApiMode
+  gatewayRoute?: GatewayRouteType
 }
 
+type LlmProtocolType = 'responses' | 'chat-completions'
+
 function normalizeProviderBaseUrl(providerId: string, rawBaseUrl?: string): string | undefined {
+  const providerKey = getProviderKey(providerId)
+  if (providerKey === 'minimax') {
+    return 'https://api.minimaxi.com/v1'
+  }
+
   const baseUrl = readTrimmedString(rawBaseUrl)
   if (!baseUrl) return undefined
-  const providerKey = getProviderKey(providerId)
   if (providerKey !== 'openai-compatible' && providerKey !== 'flow2api') return baseUrl
 
   try {
@@ -80,6 +101,14 @@ function isUnifiedModelType(value: unknown): value is UnifiedModelType {
     || value === 'audio'
     || value === 'lipsync'
   )
+}
+
+function isGatewayRoute(value: unknown): value is GatewayRouteType {
+  return value === 'official' || value === 'openai-compat'
+}
+
+function isLlmProtocol(value: unknown): value is LlmProtocolType {
+  return value === 'responses' || value === 'chat-completions'
 }
 
 function assertModelKey(value: string, field: string): { provider: string; modelId: string; modelKey: string } {
@@ -121,8 +150,33 @@ function parseCustomProviders(rawProviders: string | null | undefined): CustomPr
       throw new Error(`PROVIDER_DUPLICATE: providers[${index}].id duplicates id ${id}`)
     }
 
+    const providerKey = getProviderKey(id).toLowerCase()
     const apiModeRaw = raw.apiMode
-    const apiMode = isProviderApiMode(apiModeRaw) ? apiModeRaw : undefined
+    let apiMode: ProviderApiMode | undefined
+    if (apiModeRaw === undefined) {
+      apiMode = undefined
+    } else if (isProviderApiMode(apiModeRaw)) {
+      if (providerKey === 'gemini-compatible' && apiModeRaw === 'openai-official') {
+        throw new Error(`PROVIDER_API_MODE_INVALID: providers[${index}].apiMode`)
+      }
+      apiMode = apiModeRaw
+    } else {
+      throw new Error(`PROVIDER_API_MODE_INVALID: providers[${index}].apiMode`)
+    }
+
+    const gatewayRouteRaw = raw.gatewayRoute
+    let gatewayRoute: GatewayRouteType | undefined
+    if (gatewayRouteRaw === undefined) {
+      gatewayRoute = undefined
+    } else if (!isGatewayRoute(gatewayRouteRaw)) {
+      throw new Error(`PROVIDER_GATEWAY_ROUTE_INVALID: providers[${index}].gatewayRoute`)
+    } else if (providerKey === 'openai-compatible' && gatewayRouteRaw === 'official') {
+      throw new Error(`PROVIDER_GATEWAY_ROUTE_INVALID: providers[${index}].gatewayRoute`)
+    } else if (providerKey !== 'openai-compatible' && gatewayRouteRaw === 'openai-compat') {
+      throw new Error(`PROVIDER_GATEWAY_ROUTE_INVALID: providers[${index}].gatewayRoute`)
+    } else {
+      gatewayRoute = gatewayRouteRaw
+    }
 
     providers.push({
       id,
@@ -130,6 +184,7 @@ function parseCustomProviders(rawProviders: string | null | undefined): CustomPr
       baseUrl: readTrimmedString(raw.baseUrl) || undefined,
       apiKey: readTrimmedString(raw.apiKey) || undefined,
       apiMode,
+      gatewayRoute,
     })
   }
 
@@ -162,12 +217,42 @@ function normalizeStoredModel(raw: unknown, index: number): CustomModel {
     throw new Error(`MODEL_KEY_MISMATCH: models[${index}].modelKey conflicts with provider/modelId`)
   }
 
+  const llmProtocolRaw = raw.llmProtocol
+  let llmProtocol: LlmProtocolType | undefined
+  if (llmProtocolRaw !== undefined && llmProtocolRaw !== null) {
+    if (!isLlmProtocol(llmProtocolRaw)) {
+      throw new Error(`MODEL_LLM_PROTOCOL_INVALID: models[${index}].llmProtocol`)
+    }
+    llmProtocol = llmProtocolRaw
+  }
+  const llmProtocolCheckedAt = readTrimmedString(raw.llmProtocolCheckedAt) || undefined
+
+  const compatMediaTemplateRaw = raw.compatMediaTemplate
+  let compatMediaTemplate: OpenAICompatMediaTemplate | undefined
+  if (compatMediaTemplateRaw !== undefined && compatMediaTemplateRaw !== null) {
+    const validated = validateOpenAICompatMediaTemplate(compatMediaTemplateRaw)
+    if (!validated.ok || !validated.template) {
+      throw new Error(`MODEL_COMPAT_MEDIA_TEMPLATE_INVALID: models[${index}].compatMediaTemplate`)
+    }
+    compatMediaTemplate = validated.template
+  }
+  const compatMediaTemplateCheckedAt = readTrimmedString(raw.compatMediaTemplateCheckedAt) || undefined
+  const compatMediaTemplateSourceRaw = readTrimmedString(raw.compatMediaTemplateSource)
+  const compatMediaTemplateSource = compatMediaTemplateSourceRaw === 'ai' || compatMediaTemplateSourceRaw === 'manual'
+    ? compatMediaTemplateSourceRaw
+    : undefined
+
   return {
     modelId,
     modelKey,
     provider,
     type: raw.type,
     name: readTrimmedString(raw.name) || modelId,
+    ...(llmProtocol ? { llmProtocol } : {}),
+    ...(llmProtocolCheckedAt ? { llmProtocolCheckedAt } : {}),
+    ...(compatMediaTemplate ? { compatMediaTemplate } : {}),
+    ...(compatMediaTemplateCheckedAt ? { compatMediaTemplateCheckedAt } : {}),
+    ...(compatMediaTemplateSource ? { compatMediaTemplateSource } : {}),
     price: 0,
   }
 }
@@ -249,11 +334,21 @@ export async function resolveModelSelection(
     throw new Error(`MODEL_NOT_FOUND: ${parsed.modelKey} is not enabled for ${mediaType}`)
   }
 
+  const providerKey = getProviderKey(exact.provider).toLowerCase()
+  const llmProtocol = mediaType === 'llm' && providerKey === 'openai-compatible'
+    ? (exact.llmProtocol || 'chat-completions')
+    : undefined
+  const compatMediaTemplate = (mediaType === 'image' || mediaType === 'video') && providerKey === 'openai-compatible'
+    ? exact.compatMediaTemplate
+    : undefined
+
   return {
     provider: exact.provider,
     modelId: exact.modelId,
     modelKey: composeModelKey(exact.provider, exact.modelId),
     mediaType,
+    ...(llmProtocol ? { llmProtocol } : {}),
+    ...(compatMediaTemplate ? { compatMediaTemplate } : {}),
   }
 }
 
@@ -270,11 +365,21 @@ async function resolveSingleModelSelection(
   }
 
   const model = models[0]
+  const providerKey = getProviderKey(model.provider).toLowerCase()
+  const llmProtocol = mediaType === 'llm' && providerKey === 'openai-compatible'
+    ? (model.llmProtocol || 'chat-completions')
+    : undefined
+  const compatMediaTemplate = (mediaType === 'image' || mediaType === 'video') && providerKey === 'openai-compatible'
+    ? model.compatMediaTemplate
+    : undefined
+
   return {
     provider: model.provider,
     modelId: model.modelId,
     modelKey: composeModelKey(model.provider, model.modelId),
     mediaType,
+    ...(llmProtocol ? { llmProtocol } : {}),
+    ...(compatMediaTemplate ? { compatMediaTemplate } : {}),
   }
 }
 
@@ -308,6 +413,7 @@ export interface ProviderConfig {
   apiKey: string
   baseUrl?: string
   apiMode?: ProviderApiMode
+  gatewayRoute?: GatewayRouteType
 }
 
 export async function getProviderConfig(userId: string, providerId: string): Promise<ProviderConfig> {
@@ -324,6 +430,7 @@ export async function getProviderConfig(userId: string, providerId: string): Pro
     apiKey: decryptApiKey(provider.apiKey),
     baseUrl: normalizeProviderBaseUrl(provider.id, provider.baseUrl),
     apiMode: provider.apiMode,
+    gatewayRoute: provider.gatewayRoute,
   }
 }
 

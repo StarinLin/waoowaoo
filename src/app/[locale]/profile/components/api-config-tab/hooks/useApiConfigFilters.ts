@@ -15,10 +15,16 @@ interface EnabledModelOption extends CustomModel {
 
 const DYNAMIC_PROVIDER_PREFIXES = ['gemini-compatible', 'openai-compatible']
 const ALWAYS_SHOW_PROVIDERS: string[] = []
-const MODEL_TYPES: Array<'llm' | 'image' | 'video' | 'lipsync'> = ['llm', 'image', 'video', 'lipsync']
+/** 完全不在 UI 中展示的 provider（既不在主列表，也不在折叠区） */
+const HIDDEN_PROVIDER_KEYS = new Set(['siliconflow'])
+const PROVIDER_MODEL_TYPES: Array<'llm' | 'image' | 'video' | 'audio' | 'lipsync'> = ['llm', 'image', 'video', 'audio', 'lipsync']
+const DEFAULT_AUDIO_EXCLUDED_MODEL_IDS = new Set([
+  'qwen-voice-design',
+])
 const MODEL_PROVIDER_KEYS = [
   'ark',
   'google',
+  'bailian',
   'openrouter',
   'minimax',
   'vidu',
@@ -26,10 +32,18 @@ const MODEL_PROVIDER_KEYS = [
   'gemini-compatible',
   'openai-compatible',
 ]
-const AUDIO_PROVIDER_KEYS = ['qwen']
 
-function isModelProviderType(type: CustomModel['type']): type is 'llm' | 'image' | 'video' | 'lipsync' {
-  return MODEL_TYPES.includes(type as 'llm' | 'image' | 'video' | 'lipsync')
+function isProviderModelType(type: CustomModel['type']): type is 'llm' | 'image' | 'video' | 'audio' | 'lipsync' {
+  return PROVIDER_MODEL_TYPES.includes(type as 'llm' | 'image' | 'video' | 'audio' | 'lipsync')
+}
+
+function isDefaultModelType(type: CustomModel['type']): type is 'llm' | 'image' | 'video' | 'audio' | 'lipsync' {
+  return type === 'llm' || type === 'image' || type === 'video' || type === 'audio' || type === 'lipsync'
+}
+
+function isAudioDefaultCandidate(model: CustomModel): boolean {
+  if (model.type !== 'audio') return true
+  return !DEFAULT_AUDIO_EXCLUDED_MODEL_IDS.has(model.modelId)
 }
 
 function hasProviderApiKey(provider: Provider | undefined): boolean {
@@ -46,15 +60,7 @@ export function useApiConfigFilters({
   const modelProviderKeys = useMemo(() => {
     const keys = new Set<string>(MODEL_PROVIDER_KEYS)
     models.forEach((model) => {
-      if (!isModelProviderType(model.type)) return
-      keys.add(getProviderKey(model.provider))
-    })
-    return keys
-  }, [models])
-  const audioProviderKeys = useMemo(() => {
-    const keys = new Set<string>(AUDIO_PROVIDER_KEYS)
-    models.forEach((model) => {
-      if (model.type !== 'audio') return
+      if (!isProviderModelType(model.type)) return
       keys.add(getProviderKey(model.provider))
     })
     return keys
@@ -69,6 +75,7 @@ export function useApiConfigFilters({
   const modelProviders = useMemo(() => {
     return providers.filter((provider) => {
       const providerKey = getProviderKey(provider.id)
+      if (HIDDEN_PROVIDER_KEYS.has(providerKey)) return false
       const isCustomProvider = !isPresetProvider(provider.id)
       const isDynamicProvider =
         DYNAMIC_PROVIDER_PREFIXES.includes(providerKey) && provider.id.includes(':')
@@ -82,36 +89,39 @@ export function useApiConfigFilters({
     })
   }, [modelProviderKeys, providers])
 
-  const audioProviders = useMemo(
-    () =>
-      providers.filter((provider) => {
-        const providerKey = getProviderKey(provider.id)
-        if (providerKey === 'fal') return false
-        return audioProviderKeys.has(providerKey)
-      }),
-    [audioProviderKeys, providers],
-  )
-
   const enabledModelsByType = useMemo(() => {
-    const grouped: Record<'llm' | 'image' | 'video' | 'lipsync', EnabledModelOption[]> = {
+    const grouped: Record<'llm' | 'image' | 'video' | 'audio' | 'lipsync' | 'voicedesign', EnabledModelOption[]> = {
       llm: [],
       image: [],
       video: [],
+      audio: [],
       lipsync: [],
+      voicedesign: [],
     }
 
     const providersById = new Map(providers.map((provider) => [provider.id, provider] as const))
 
     for (const model of models) {
       if (!model.enabled) continue
-      if (!isModelProviderType(model.type)) continue
+      if (!isDefaultModelType(model.type)) continue
       const provider = providersById.get(model.provider)
       if (!hasProviderApiKey(provider)) continue
 
-      grouped[model.type].push({
+      const option: EnabledModelOption = {
         ...model,
         providerName: provider?.name || model.provider,
-      })
+      }
+
+      // Voice design models (audio type but excluded from TTS)
+      if (model.type === 'audio' && DEFAULT_AUDIO_EXCLUDED_MODEL_IDS.has(model.modelId)) {
+        grouped.voicedesign.push(option)
+        continue
+      }
+
+      // Normal audio default candidate check
+      if (!isAudioDefaultCandidate(model)) continue
+
+      grouped[model.type].push(option)
     }
 
     return grouped
@@ -119,9 +129,8 @@ export function useApiConfigFilters({
 
   return {
     modelProviders,
-    audioProviders,
     getModelsForProvider: (providerId: string) =>
       models.filter((model) => model.provider === providerId),
-    getEnabledModelsByType: (type: 'llm' | 'image' | 'video' | 'lipsync') => enabledModelsByType[type],
+    getEnabledModelsByType: (type: 'llm' | 'image' | 'video' | 'audio' | 'lipsync' | 'voicedesign') => enabledModelsByType[type],
   }
 }

@@ -7,6 +7,11 @@ export type RunStepState = {
   stepIndex: number
   stepTotal: number
   status: RunStepStatus
+  dependsOn: string[]
+  blockedBy: string[]
+  groupId: string | null
+  parallelKey: string | null
+  retryable: boolean
   textOutput: string
   reasoningOutput: string
   textLength: number
@@ -40,7 +45,7 @@ export type RunResult = {
   errorMessage: string
 }
 
-export type StageViewStatus = 'pending' | 'queued' | 'processing' | 'completed' | 'failed'
+export type StageViewStatus = 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'blocked' | 'stale'
 
 export type RunStageView = {
   id: string
@@ -48,9 +53,11 @@ export type RunStageView = {
   subtitle?: string
   status: StageViewStatus
   progress: number
+  attempt?: number
+  retryable?: boolean
 }
 
-export type UseRunStreamStateOptions<TParams> = {
+export type UseRunStreamStateOptions<TParams extends Record<string, unknown>> = {
   projectId: string
   endpoint: (projectId: string) => string
   storageKeyPrefix: string
@@ -58,4 +65,28 @@ export type UseRunStreamStateOptions<TParams> = {
   buildRequestBody: (params: TParams) => Record<string, unknown>
   validateParams?: (params: TParams) => void
   resolveActiveRunId?: (context: { projectId: string; storageScopeKey?: string }) => Promise<string | null>
+}
+
+export type RunStreamView = {
+  runState: RunState | null
+  runId: string
+  status: RunStreamStatus | 'idle'
+  isRunning: boolean
+  isRecoveredRunning: boolean
+  isVisible: boolean
+  errorMessage: string
+  summary: Record<string, unknown> | null
+  payload: Record<string, unknown> | null
+  stages: RunStageView[]
+  orderedSteps: RunStepState[]
+  activeStepId: string | null
+  selectedStep: RunStepState | null
+  outputText: string
+  overallProgress: number
+  activeMessage: string
+  run: (params: Record<string, unknown>) => Promise<RunResult>
+  retryStep: (params: { stepId: string; modelOverride?: string; reason?: string }) => Promise<RunResult>
+  stop: () => void
+  reset: () => void
+  selectStep: (stepId: string) => void
 }

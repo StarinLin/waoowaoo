@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { resolveTaskResponse } from '@/lib/task/client'
+import type { SpeakerVoiceEntry, SpeakerVoicePatch } from '@/lib/voice/provider-voice-binding'
 import {
     requestBlobWithError,
     requestJsonWithError,
@@ -15,16 +16,11 @@ type ProjectVoiceLine = {
     emotionPrompt: string | null
     emotionStrength: number | null
     audioUrl: string | null
+    updatedAt: string | null
     lineTaskRunning: boolean
     matchedPanelId?: string | null
     matchedStoryboardId?: string | null
     matchedPanelIndex?: number | null
-}
-
-type SpeakerVoiceConfig = {
-    voiceType: string
-    voiceId?: string
-    audioUrl: string
 }
 
 type GenerateProjectVoiceResponse = {
@@ -34,7 +30,7 @@ type GenerateProjectVoiceResponse = {
     taskIds?: string[]
     total?: number
     error?: string
-    results?: Array<{ audioUrl?: string }>
+    results?: Array<{ lineId?: string; taskId?: string; audioUrl?: string }>
 }
 
 export function useDesignProjectVoice(projectId: string) {
@@ -73,7 +69,7 @@ export function useFetchProjectVoiceStageData(projectId: string) {
     return useMutation({
         mutationFn: async ({ episodeId }: { episodeId: string }): Promise<{
             voiceLines: ProjectVoiceLine[]
-            speakerVoices: Record<string, SpeakerVoiceConfig>
+            speakerVoices: Record<string, SpeakerVoiceEntry>
             speakers: string[]
         }> => {
             const [linesData, voicesData, speakersData] = await Promise.all([
@@ -82,7 +78,7 @@ export function useFetchProjectVoiceStageData(projectId: string) {
                     { method: 'GET' },
                     '获取台词失败',
                 ),
-                requestJsonWithError<{ speakerVoices?: Record<string, SpeakerVoiceConfig> }>(
+                requestJsonWithError<{ speakerVoices?: Record<string, SpeakerVoiceEntry> }>(
                     `/api/novel-promotion/${projectId}/speaker-voice?episodeId=${episodeId}`,
                     { method: 'GET' },
                     '获取角色音色失败',
@@ -235,10 +231,7 @@ export function useUpdateSpeakerVoice(projectId: string) {
         mutationFn: async (payload: {
             episodeId: string
             speaker: string
-            audioUrl: string
-            voiceType?: string
-            voiceId?: string
-        }) =>
+        } & SpeakerVoicePatch) =>
             await requestJsonWithError<{ success: boolean }>(
                 `/api/novel-promotion/${projectId}/speaker-voice`,
                 {

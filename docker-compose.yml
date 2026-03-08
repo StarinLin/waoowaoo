@@ -39,6 +39,40 @@ services:
       retries: 30
       start_period: 5s
 
+  # ==================== MinIO ====================
+  minio:
+    image: minio/minio:RELEASE.2025-02-28T09-55-16Z
+    container_name: waoowaoo-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "19000:9000"
+      - "19001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-02-21T16-00-46Z
+    container_name: waoowaoo-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/waoowaoo
+      "
+
   # ==================== App (Next.js + Workers) ====================
   app:
     build: .
@@ -53,8 +87,14 @@ services:
       REDIS_USERNAME: ""
       REDIS_PASSWORD: ""
       REDIS_TLS: ""
-      # 存储：默认本地存储
-      STORAGE_TYPE: local
+      # 存储：默认 MinIO（S3 兼容）
+      STORAGE_TYPE: minio
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_REGION: "us-east-1"
+      MINIO_BUCKET: "waoowaoo"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_FORCE_PATH_STYLE: "true"
       # 认证
       NEXTAUTH_URL: "http://localhost:3000"
       NEXTAUTH_SECRET: "waoowaoo-default-secret-2026"
@@ -98,6 +138,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     command: >
       sh -c "
         npx prisma db push --skip-generate &&
@@ -118,3 +162,4 @@ services:
 volumes:
   mysql_data:
   redis_data:
+  minio_data:

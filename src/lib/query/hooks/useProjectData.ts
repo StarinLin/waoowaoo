@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../keys'
 import { resolveTaskErrorMessage } from '@/lib/task/error-message'
 import type { Project, MediaRef } from '@/types/project'
+import { apiFetch } from '@/lib/api-fetch'
 
 // ============ 项目数据 Hook ============
 
@@ -20,7 +21,7 @@ export function useProjectData(projectId: string | null) {
         queryKey: queryKeys.projectData(projectId || ''),
         queryFn: async () => {
             if (!projectId) throw new Error('Project ID is required')
-            const res = await fetch(`/api/projects/${projectId}/data`)
+            const res = await apiFetch(`/api/projects/${projectId}/data`)
             if (!res.ok) {
                 const error = await res.json()
                 throw new Error(resolveTaskErrorMessage(error, 'Failed to load project'))
@@ -84,7 +85,7 @@ export function useEpisodeData(projectId: string | null, episodeId: string | nul
         queryKey: queryKeys.episodeData(projectId || '', episodeId || ''),
         queryFn: async () => {
             if (!projectId || !episodeId) throw new Error('Project ID and Episode ID are required')
-            const res = await fetch(`/api/novel-promotion/${projectId}/episodes/${episodeId}`)
+            const res = await apiFetch(`/api/novel-promotion/${projectId}/episodes/${episodeId}`)
             if (!res.ok) {
                 const error = await res.json()
                 throw new Error(resolveTaskErrorMessage(error, 'Failed to load episode'))

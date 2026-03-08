@@ -15,6 +15,10 @@ import {
 } from '@/lib/model-config-contract'
 import { findBuiltinCapabilities } from '@/lib/model-capabilities/catalog'
 import { resolveGenerationOptionsForModel } from '@/lib/model-capabilities/lookup'
+import {
+  type WorkflowConcurrencyConfig,
+  normalizeWorkflowConcurrencyConfig,
+} from '@/lib/workflow-concurrency'
 
 export type ParsedModelKey = { provider: string, modelId: string }
 
@@ -100,6 +104,7 @@ export interface ProjectModelConfig {
   storyboardModel: string | null
   editModel: string | null
   videoModel: string | null
+  audioModel: string | null
   videoRatio: string | null
   artStyle: string | null
   capabilityDefaults: CapabilitySelections
@@ -113,7 +118,27 @@ export interface UserModelConfig {
   storyboardModel: string | null
   editModel: string | null
   videoModel: string | null
+  audioModel: string | null
   capabilityDefaults: CapabilitySelections
+}
+
+export async function getUserWorkflowConcurrencyConfig(
+  userId: string,
+): Promise<WorkflowConcurrencyConfig> {
+  const userPref = await prisma.userPreference.findUnique({
+    where: { userId },
+    select: {
+      analysisConcurrency: true,
+      imageConcurrency: true,
+      videoConcurrency: true,
+    },
+  })
+
+  return normalizeWorkflowConcurrencyConfig({
+    analysis: userPref?.analysisConcurrency,
+    image: userPref?.imageConcurrency,
+    video: userPref?.videoConcurrency,
+  })
 }
 
 /**
@@ -135,6 +160,7 @@ export async function getProjectModelConfig(
     storyboardModel: extractModelKey(projectData?.storyboardModel) || null,
     editModel: extractModelKey(projectData?.editModel) || null,
     videoModel: extractModelKey(projectData?.videoModel) || null,
+    audioModel: extractModelKey(projectData?.audioModel) || extractModelKey(userPref?.audioModel) || null,
     videoRatio: projectData?.videoRatio || '16:9',
     artStyle: projectData?.artStyle || null,
     capabilityDefaults: parseCapabilitySelections(userPref?.capabilityDefaults),
@@ -157,6 +183,7 @@ export async function getUserModelConfig(userId: string): Promise<UserModelConfi
     storyboardModel: extractModelKey(userPref?.storyboardModel) || null,
     editModel: extractModelKey(userPref?.editModel) || null,
     videoModel: extractModelKey(userPref?.videoModel) || null,
+    audioModel: extractModelKey(userPref?.audioModel) || null,
     capabilityDefaults: parseCapabilitySelections(userPref?.capabilityDefaults),
   }
 }
@@ -226,6 +253,7 @@ export function checkRequiredModels(
     storyboardModel: '分镜图像模型',
     editModel: '修图/编辑模型',
     videoModel: '视频模型',
+    audioModel: '语音合成模型',
   }
 
   for (const field of requiredFields) {

@@ -120,7 +120,9 @@
     "storyToScriptSubtitle": "Story To Script V2",
     "scriptToStoryboardSubtitle": "Script To Storyboard V2",
     "stop": "Stop",
-    "minimize": "Minimize"
+    "minimize": "Minimize",
+    "copyErrorDetail": "Copy error detail",
+    "openFeedbackForm": "Open feedback form"
   },
   "streamStep": {
     "analyzeCharacters": "Analyze characters",

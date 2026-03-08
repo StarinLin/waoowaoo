@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateUniqueKey, getSignedUrl, uploadToCOS } from '@/lib/cos'
+import { generateUniqueKey, getSignedUrl, uploadObject } from '@/lib/storage'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 
@@ -42,7 +42,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
     // 上传到 COS
     const key = generateUniqueKey(`temp-${session.user.id}-${Date.now()}`, ext)
-    await uploadToCOS(buffer, key)
+    await uploadObject(buffer, key)
 
     // 返回签名 URL（有效期 1 小时）
     const signedUrl = getSignedUrl(key, 3600)

@@ -1,4 +1,5 @@
 import type { Job } from 'bullmq'
+import { safeParseJsonObject } from '@/lib/json-repair'
 import { prisma } from '@/lib/prisma'
 import { executeAiTextStep } from '@/lib/ai-runtime'
 import { withInternalLLMStreamCallbacks } from '@/lib/llm-observe/internal-stream-context'
@@ -32,14 +33,7 @@ function nameMatchesWithAlias(existingName: string, newName: string): boolean {
 }
 
 function parseJsonResponse(responseText: string): Record<string, unknown> {
-  let cleanedText = responseText.trim()
-  cleanedText = cleanedText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '')
-  const firstBrace = cleanedText.indexOf('{')
-  const lastBrace = cleanedText.lastIndexOf('}')
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleanedText = cleanedText.substring(firstBrace, lastBrace + 1)
-  }
-  return JSON.parse(cleanedText) as Record<string, unknown>
+  return safeParseJsonObject(responseText)
 }
 
 export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {

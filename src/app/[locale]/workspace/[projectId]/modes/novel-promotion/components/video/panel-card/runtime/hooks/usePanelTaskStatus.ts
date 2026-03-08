@@ -11,10 +11,17 @@ interface UsePanelTaskStatusParams {
 export function usePanelTaskStatus({ panel, hasVisibleBaseVideo, tCommon }: UsePanelTaskStatusParams) {
   const isVideoTaskRunning = !!panel.videoTaskRunning
   const isLipSyncTaskRunning = !!panel.lipSyncTaskRunning
-  const panelErrorDisplay = resolveErrorDisplay({
-    code: panel.videoErrorMessage || panel.lipSyncErrorMessage || null,
-    message: panel.videoErrorMessage || panel.lipSyncErrorMessage || null,
+  const rawErrorMessage = panel.videoErrorMessage || panel.lipSyncErrorMessage || null
+  const panelErrorDisplayBase = resolveErrorDisplay({
+    code: panel.videoErrorCode || panel.lipSyncErrorCode || null,
+    message: rawErrorMessage,
   })
+  const panelErrorDisplay =
+    panelErrorDisplayBase && rawErrorMessage && (
+      panelErrorDisplayBase.code === 'EXTERNAL_ERROR' || panelErrorDisplayBase.code === 'INTERNAL_ERROR'
+    )
+      ? { ...panelErrorDisplayBase, message: rawErrorMessage }
+      : panelErrorDisplayBase
 
   const videoRunningPresentation = isVideoTaskRunning
     ? resolveTaskPresentationState({

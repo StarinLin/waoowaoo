@@ -12,8 +12,13 @@ import {
     useAiCreateProjectLocation,
     useAiDesignLocation,
     useCreateAssetHubLocation,
+    useGenerateLocationImage,
     useCreateProjectLocation,
+    useGenerateProjectLocationImage,
 } from '@/lib/query/hooks'
+import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
+import ImageGenerationInlineCountButton from '@/components/image-generation/ImageGenerationInlineCountButton'
+import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
 
 export interface LocationCreationModalProps {
     mode: 'asset-hub' | 'project'
@@ -44,8 +49,14 @@ export function LocationCreationModal({
     const t = useTranslations('assetModal')
     const aiDesignAssetHubLocation = useAiDesignLocation()
     const createAssetHubLocation = useCreateAssetHubLocation()
+    const generateAssetHubLocation = useGenerateLocationImage()
     const aiCreateProjectLocation = useAiCreateProjectLocation(projectId || '')
     const createProjectLocation = useCreateProjectLocation(projectId || '')
+    const generateProjectLocation = useGenerateProjectLocationImage(projectId || '')
+    const {
+        count: locationGenerationCount,
+        setCount: setLocationGenerationCount,
+    } = useImageGenerationCount('location')
 
     // 表单字段
     const [name, setName] = useState('')
@@ -123,6 +134,12 @@ export function LocationCreationModal({
         }
     }
 
+    type CreatedLocationResponse = {
+        location?: {
+            id: string
+        }
+    }
+
     // 提交创建
     const handleSubmit = async () => {
         if (!name.trim() || !description.trim()) return
@@ -157,6 +174,59 @@ export function LocationCreationModal({
                     name: body.name,
                     description: body.description,
                     artStyle: body.artStyle,
+                })
+            }
+
+            onSuccess()
+            onClose()
+        } catch (error: unknown) {
+            if (getErrorStatus(error) === 402) {
+                alert(getErrorMessage(error, t('errors.insufficientBalance')))
+            } else if (shouldShowError(error)) {
+                alert(getErrorMessage(error, t('errors.createFailed')))
+            }
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleSubmitAndGenerate = async () => {
+        if (!name.trim() || !description.trim()) return
+
+        try {
+            setIsSubmitting(true)
+
+            if (mode === 'asset-hub') {
+                const result = await createAssetHubLocation.mutateAsync({
+                    name: name.trim(),
+                    summary: description.trim(),
+                    artStyle,
+                    folderId: folderId ?? null,
+                    count: locationGenerationCount,
+                }) as CreatedLocationResponse
+                const createdLocationId = result.location?.id
+                if (!createdLocationId) {
+                    throw new Error(t('errors.createFailed'))
+                }
+                await generateAssetHubLocation.mutateAsync({
+                    locationId: createdLocationId,
+                    artStyle,
+                    count: locationGenerationCount,
+                })
+            } else {
+                const result = await createProjectLocation.mutateAsync({
+                    name: name.trim(),
+                    description: description.trim(),
+                    artStyle,
+                    count: locationGenerationCount,
+                }) as CreatedLocationResponse
+                const createdLocationId = result.location?.id
+                if (!createdLocationId) {
+                    throw new Error(t('errors.createFailed'))
+                }
+                await generateProjectLocation.mutateAsync({
+                    locationId: createdLocationId,
+                    count: locationGenerationCount,
                 })
             }
 
@@ -231,7 +301,6 @@ export function LocationCreationModal({
                                             : 'glass-btn-soft border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)]'
                                             }`}
                                     >
-                                        <span>{style.preview}</span>
                                         <span>{style.label}</span>
                                     </button>
                                 ))}
@@ -307,14 +376,27 @@ export function LocationCreationModal({
                     <button
                         onClick={handleSubmit}
                         disabled={isSubmitting || !name.trim() || !description.trim()}
-                        className="glass-btn-base glass-btn-primary px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-2"
+                        className="glass-btn-base glass-btn-secondary px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-2"
                     >
                         {isSubmitting ? (
                             <TaskStatusInline state={submittingState} className="text-white [&>span]:text-white [&_svg]:text-white" />
                         ) : (
-                            <span>{t('common.add')}</span>
+                            <span>{mode === 'asset-hub' ? t('common.addOnlyToAssetHubLocation') : t('common.addOnlyLocation')}</span>
                         )}
                     </button>
+                    <ImageGenerationInlineCountButton
+                        prefix={<span>{t('common.addAndGeneratePrefix')}</span>}
+                        suffix={<span>{t('common.generateCountSuffix')}</span>}
+                        value={locationGenerationCount}
+                        options={getImageGenerationCountOptions('location')}
+                        onValueChange={setLocationGenerationCount}
+                        onClick={handleSubmitAndGenerate}
+                        actionDisabled={!name.trim() || !description.trim()}
+                        selectDisabled={isSubmitting}
+                        ariaLabel={t('common.selectGenerateCount')}
+                        className="glass-btn-base glass-btn-primary flex items-center justify-center gap-1 rounded-lg px-4 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                        selectClassName="appearance-none bg-transparent border-0 pl-0 pr-3 text-sm font-semibold text-current outline-none cursor-pointer leading-none transition-colors"
+                    />
                 </div>
             </div>
         </div>

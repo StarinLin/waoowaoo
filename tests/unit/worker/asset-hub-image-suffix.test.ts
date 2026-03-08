@@ -93,7 +93,8 @@ describe('asset hub character image prompt suffix regression', () => {
 
     await handleAssetHubImageTask(job)
 
-    const callArg = sharedMock.generateLabeledImageToCos.mock.calls[0]?.[0] as { prompt?: string } | undefined
+    const generationCall = sharedMock.generateLabeledImageToCos.mock.calls[0] as unknown as [{ prompt?: string }] | undefined
+    const callArg = generationCall?.[0]
     const prompt = callArg?.prompt || ''
 
     expect(prompt).toContain('主角，黑发，冷静')

@@ -6,6 +6,7 @@ import { queryKeys } from '../keys'
 import type { TaskIntent } from '@/lib/task/intent'
 import type { TaskTargetOverlayMap } from '../task-target-overlay'
 import { createScopedLogger } from '@/lib/logging/core'
+import { apiFetch } from '@/lib/api-fetch'
 
 export type TaskTargetStateQuery = {
   targetType: string
@@ -183,7 +184,7 @@ async function fetchTargetStatesChunk(
   projectId: string,
   targets: TaskTargetStateQuery[],
 ): Promise<TaskTargetState[]> {
-  const response = await fetch('/api/task-target-states', {
+  const response = await apiFetch('/api/task-target-states', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ projectId, targets }),
@@ -289,7 +290,11 @@ export function useTaskTargetStateMap(
     queryKey: queryKeys.tasks.targetStates(projectId || '', serializedTargets),
     enabled,
     staleTime: options.staleTime ?? 15000,
-    refetchInterval: false,
+    refetchInterval: (state) => {
+      const data = state.state.data as TaskTargetState[] | undefined
+      if (!data) return false
+      return data.some((item) => item.phase === 'queued' || item.phase === 'processing') ? 2000 : false
+    },
     refetchOnMount: false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,

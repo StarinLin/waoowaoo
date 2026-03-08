@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import {
   encodeModelKey,
   PRESET_MODELS,
@@ -16,7 +16,27 @@ import type {
   ProviderCardProps,
   ProviderCardTranslator,
 } from '../types'
+import { VERIFIABLE_PROVIDER_KEYS } from '../types'
 import type { CustomModel } from '../../types'
+import { apiFetch } from '@/lib/api-fetch'
+import {
+  useAssistantChat,
+  type AssistantDraftModel,
+  type AssistantSavedEvent,
+  type UseAssistantChatResult,
+} from '@/components/assistant/useAssistantChat'
+
+type KeyTestStepStatus = 'pass' | 'fail' | 'skip'
+interface KeyTestStep {
+  name: string
+  status: KeyTestStepStatus
+  message: string
+  model?: string
+  detail?: string
+}
+type KeyTestStatus = 'idle' | 'testing' | 'passed' | 'failed'
+
+
 
 interface UseProviderCardStateParams {
   provider: ProviderCardProps['provider']
@@ -27,6 +47,7 @@ interface UseProviderCardStateParams {
   onUpdateBaseUrl: ProviderCardProps['onUpdateBaseUrl']
   onUpdateModel: ProviderCardProps['onUpdateModel']
   onAddModel: ProviderCardProps['onAddModel']
+  onFlushConfig: ProviderCardProps['onFlushConfig']
   t: ProviderCardTranslator
 }
 
@@ -44,8 +65,6 @@ const EMPTY_MODEL_FORM: ModelFormState = {
  * Provider keys that require user-defined pricing when adding custom models
  * (they are not in the built-in pricing catalog).
  */
-const CUSTOM_PRICING_PROVIDER_KEYS = new Set(['openrouter', 'openai-compatible'])
-
 type AddModelCustomPricing = {
   llm?: { inputPerMillion?: number; outputPerMillion?: number }
   image?: { basePrice?: number; optionPrices?: Record<string, Record<string, number>> }
@@ -55,6 +74,125 @@ type AddModelCustomPricing = {
 type BuildCustomPricingResult =
   | { ok: true; customPricing?: AddModelCustomPricing }
   | { ok: false; reason: 'invalid' }
+
+interface ProviderConnectionPayload {
+  apiType: string
+  apiKey: string
+  baseUrl?: string
+  llmModel?: string
+}
+
+type LlmProtocolType = 'responses' | 'chat-completions'
+
+type ProbeModelLlmProtocolSuccessResponse = {
+  success: true
+  protocol: LlmProtocolType
+  checkedAt: string
+}
+
+type ProbeModelLlmProtocolFailureResponse = {
+  success: false
+  code?: string
+}
+
+function isLlmProtocol(value: unknown): value is LlmProtocolType {
+  return value === 'responses' || value === 'chat-completions'
+}
+
+function readProbeFailureCode(value: unknown): string {
+  return typeof value === 'string' ? value : 'PROBE_INCONCLUSIVE'
+}
+
+export function shouldProbeModelLlmProtocol(params: {
+  providerId: string
+  modelType: ProviderCardModelType
+}): boolean {
+  return getProviderKey(params.providerId) === 'openai-compatible' && params.modelType === 'llm'
+}
+
+export function shouldReprobeModelLlmProtocol(params: {
+  providerId: string
+  originalModel: CustomModel
+  nextModelId: string
+}): boolean {
+  if (!shouldProbeModelLlmProtocol({ providerId: params.providerId, modelType: 'llm' })) return false
+  if (params.originalModel.type !== 'llm') return false
+  if (getProviderKey(params.originalModel.provider) !== 'openai-compatible') return false
+  return params.originalModel.modelId !== params.nextModelId || params.originalModel.provider !== params.providerId
+}
+
+export async function probeModelLlmProtocolViaApi(params: {
+  providerId: string
+  modelId: string
+}): Promise<{ llmProtocol: LlmProtocolType; llmProtocolCheckedAt: string }> {
+  const response = await apiFetch('/api/user/api-config/probe-model-llm-protocol', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      providerId: params.providerId,
+      modelId: params.modelId,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error('MODEL_LLM_PROTOCOL_PROBE_REQUEST_FAILED')
+  }
+
+  const payload = await response.json() as ProbeModelLlmProtocolSuccessResponse | ProbeModelLlmProtocolFailureResponse
+  if (!payload.success) {
+    throw new Error(readProbeFailureCode(payload.code))
+  }
+
+  if (!isLlmProtocol(payload.protocol)) {
+    throw new Error('MODEL_LLM_PROTOCOL_PROBE_INVALID_PROTOCOL')
+  }
+
+  const checkedAt = typeof payload.checkedAt === 'string' && payload.checkedAt.trim().length > 0
+    ? payload.checkedAt.trim()
+    : new Date().toISOString()
+
+  return {
+    llmProtocol: payload.protocol,
+    llmProtocolCheckedAt: checkedAt,
+  }
+}
+
+function pickConfiguredLlmModel(params: {
+  models: CustomModel[]
+  defaultAnalysisModel?: string
+}): string | undefined {
+  const enabledLlmModels = params.models.filter((model) => model.type === 'llm' && model.enabled)
+  if (enabledLlmModels.length === 0) return undefined
+  const preferredModel = enabledLlmModels.find((model) => model.modelKey === params.defaultAnalysisModel)
+  return (preferredModel ?? enabledLlmModels[0])?.modelId
+}
+
+export function buildProviderConnectionPayload(params: {
+  providerKey: string
+  apiKey: string
+  baseUrl?: string
+  llmModel?: string
+}): ProviderConnectionPayload {
+  const apiKey = params.apiKey.trim()
+  const compatibleBaseUrl = params.baseUrl?.trim()
+  const llmModel = params.llmModel?.trim()
+  const isCompatibleProvider =
+    params.providerKey === 'openai-compatible' || params.providerKey === 'gemini-compatible'
+
+  if (isCompatibleProvider && compatibleBaseUrl) {
+    return {
+      apiType: params.providerKey,
+      apiKey,
+      baseUrl: compatibleBaseUrl,
+      ...(llmModel ? { llmModel } : {}),
+    }
+  }
+
+  return {
+    apiType: params.providerKey,
+    apiKey,
+    ...(llmModel ? { llmModel } : {}),
+  }
+}
 
 export function buildCustomPricingFromModelForm(
   modelType: ProviderCardModelType,
@@ -186,10 +324,31 @@ export interface UseProviderCardStateResult {
   handleCancelUrlEdit: () => void
   handleEditModel: (model: CustomModel) => void
   handleCancelEditModel: () => void
-  handleSaveModel: (originalModelKey: string) => void
-  handleAddModel: (type: ProviderCardModelType) => void
+  handleSaveModel: (originalModelKey: string) => Promise<void>
+  handleAddModel: (type: ProviderCardModelType) => Promise<void>
   handleCancelAdd: () => void
   needsCustomPricing: boolean
+  keyTestStatus: KeyTestStatus
+  keyTestSteps: KeyTestStep[]
+  handleForceSaveKey: () => void
+  handleTestOnly: () => void
+  handleDismissTest: () => void
+  isModelSavePending: boolean
+  assistantEnabled: boolean
+  isAssistantOpen: boolean
+  assistantSavedEvent: AssistantSavedEvent | null
+  assistantChat: UseAssistantChatResult
+  openAssistant: () => void
+  closeAssistant: () => void
+  handleAssistantSend: (content?: string) => Promise<void>
+}
+
+export function getAssistantSavedModelLabel(event: AssistantSavedEvent): string {
+  const draftName = event.draftModel?.name?.trim()
+  if (draftName) return draftName
+  const tail = event.savedModelKey.split('::').pop()
+  const modelId = typeof tail === 'string' ? tail.trim() : ''
+  return modelId || event.savedModelKey
 }
 
 export function useProviderCardState({
@@ -201,6 +360,7 @@ export function useProviderCardState({
   onUpdateBaseUrl,
   onUpdateModel,
   onAddModel,
+  onFlushConfig,
   t,
 }: UseProviderCardStateParams): UseProviderCardStateResult {
   const [isEditing, setIsEditing] = useState(false)
@@ -214,8 +374,14 @@ export function useProviderCardState({
   const [batchMode, setBatchMode] = useState(false)
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [editModel, setEditModel] = useState<ModelFormState>(EMPTY_MODEL_FORM)
+  const [keyTestStatus, setKeyTestStatus] = useState<KeyTestStatus>('idle')
+  const [keyTestSteps, setKeyTestSteps] = useState<KeyTestStep[]>([])
+  const [isModelSavePending, setIsModelSavePending] = useState(false)
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false)
+  const [assistantSavedEvent, setAssistantSavedEvent] = useState<AssistantSavedEvent | null>(null)
 
   const providerKey = getProviderKey(provider.id)
+  const assistantEnabled = providerKey === 'openai-compatible'
   const isPresetProvider = PRESET_PROVIDERS.some(
     (presetProvider) => presetProvider.id === provider.id,
   )
@@ -254,6 +420,10 @@ export function useProviderCardState({
       return true
     }
 
+    if (model.type === 'audio' && matchesModelKey(defaultModels.audioModel, model.provider, model.modelId)) {
+      return true
+    }
+
     if (model.type === 'lipsync' && matchesModelKey(defaultModels.lipSyncModel, model.provider, model.modelId)) {
       return true
     }
@@ -271,14 +441,99 @@ export function useProviderCardState({
     setIsEditingUrl(true)
   }
 
-  const handleSaveKey = () => {
+  const doSaveKey = useCallback(() => {
     onUpdateApiKey(provider.id, tempKey)
     setIsEditing(false)
-  }
+    setKeyTestStatus('idle')
+    setKeyTestSteps([])
+  }, [onUpdateApiKey, provider.id, tempKey])
+
+  const handleSaveKey = useCallback(async () => {
+    if (!VERIFIABLE_PROVIDER_KEYS.has(providerKey)) {
+      doSaveKey()
+      return
+    }
+
+    setKeyTestStatus('testing')
+    setKeyTestSteps([])
+
+    try {
+      const fallbackLlmModel = pickConfiguredLlmModel({
+        models,
+        defaultAnalysisModel: defaultModels.analysisModel,
+      })
+      const payload = buildProviderConnectionPayload({
+        providerKey,
+        apiKey: tempKey,
+        baseUrl: provider.baseUrl,
+        llmModel: fallbackLlmModel,
+      })
+      const res = await apiFetch('/api/user/api-config/test-provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await res.json()
+      const steps: KeyTestStep[] = data.steps || []
+      setKeyTestSteps(steps)
+
+      if (data.success) {
+        setKeyTestStatus('passed')
+        // Show success for 1.5s before saving
+        setTimeout(() => doSaveKey(), 1500)
+      } else {
+        setKeyTestStatus('failed')
+      }
+    } catch {
+      setKeyTestSteps([{ name: 'models', status: 'fail', message: 'Network error' }])
+      setKeyTestStatus('failed')
+    }
+  }, [defaultModels.analysisModel, doSaveKey, models, provider.baseUrl, providerKey, tempKey])
+
+  const handleForceSaveKey = useCallback(() => {
+    doSaveKey()
+  }, [doSaveKey])
+
+  // 纯测试：不保存，结果持久展示直到用户手动关闭
+  const handleTestOnly = useCallback(async () => {
+    setKeyTestStatus('testing')
+    setKeyTestSteps([])
+    try {
+      const fallbackLlmModel = pickConfiguredLlmModel({
+        models,
+        defaultAnalysisModel: defaultModels.analysisModel,
+      })
+      const payload = buildProviderConnectionPayload({
+        providerKey,
+        apiKey: provider.apiKey || '',
+        baseUrl: provider.baseUrl,
+        llmModel: fallbackLlmModel,
+      })
+      const res = await apiFetch('/api/user/api-config/test-provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      setKeyTestSteps(data.steps || [])
+      setKeyTestStatus(data.success ? 'passed' : 'failed')
+    } catch {
+      setKeyTestSteps([{ name: 'models', status: 'fail', message: 'Network error' }])
+      setKeyTestStatus('failed')
+    }
+  }, [defaultModels.analysisModel, models, provider.apiKey, provider.baseUrl, providerKey])
+
+  const handleDismissTest = useCallback(() => {
+    setKeyTestStatus('idle')
+    setKeyTestSteps([])
+  }, [])
 
   const handleCancelEdit = () => {
     setTempKey(provider.apiKey || '')
     setIsEditing(false)
+    setKeyTestStatus('idle')
+    setKeyTestSteps([])
   }
 
   const handleSaveUrl = () => {
@@ -304,7 +559,27 @@ export function useProviderCardState({
     setEditModel(EMPTY_MODEL_FORM)
   }
 
-  const handleSaveModel = (originalModelKey: string) => {
+  const resolveProbeFailureMessage = (error: unknown): string => {
+    const code = error instanceof Error ? error.message : ''
+    if (code === 'PROBE_AUTH_FAILED') return t('probeAuthFailed')
+    if (code === 'PROBE_INCONCLUSIVE') return t('probeInconclusive')
+    if (code === 'MODEL_LLM_PROTOCOL_PROBE_REQUEST_FAILED') return t('probeRequestFailed')
+    return t('probeLlmProtocolFailed')
+  }
+
+  const flushConfigBeforeProbe = useCallback(async (): Promise<boolean> => {
+    if (!onFlushConfig) return true
+    try {
+      await onFlushConfig()
+      return true
+    } catch {
+      alert(t('flushConfigFailed'))
+      return false
+    }
+  }, [onFlushConfig, t])
+
+  const handleSaveModel = async (originalModelKey: string): Promise<void> => {
+    if (isModelSavePending) return
     if (!editModel.name || !editModel.modelId) {
       alert(t('fillComplete'))
       return
@@ -323,15 +598,43 @@ export function useProviderCardState({
       return
     }
 
-    onUpdateModel?.(originalModelKey, {
-      name: editModel.name,
-      modelId: editModel.modelId,
-    })
+    setIsModelSavePending(true)
+    try {
+      const originalModel = all.find((model) => model.modelKey === originalModelKey)
+      let protocolUpdates: Pick<CustomModel, 'llmProtocol' | 'llmProtocolCheckedAt'> | null = null
+      if (originalModel && shouldReprobeModelLlmProtocol({
+        providerId: provider.id,
+        originalModel,
+        nextModelId: editModel.modelId,
+      })) {
+        const flushed = await flushConfigBeforeProbe()
+        if (!flushed) return
 
-    handleCancelEditModel()
+        try {
+          protocolUpdates = await probeModelLlmProtocolViaApi({
+            providerId: provider.id,
+            modelId: editModel.modelId,
+          })
+        } catch (error) {
+          alert(resolveProbeFailureMessage(error))
+          return
+        }
+      }
+
+      onUpdateModel?.(originalModelKey, {
+        name: editModel.name,
+        modelId: editModel.modelId,
+        ...(protocolUpdates ? protocolUpdates : {}),
+      })
+
+      handleCancelEditModel()
+    } finally {
+      setIsModelSavePending(false)
+    }
   }
 
-  const handleAddModel = (type: ProviderCardModelType) => {
+  const handleAddModel = async (type: ProviderCardModelType): Promise<void> => {
+    if (isModelSavePending) return
     if (!newModel.name || !newModel.modelId) {
       alert(t('fillComplete'))
       return
@@ -354,29 +657,40 @@ export function useProviderCardState({
         ? `${newModel.name} (Batch)`
         : newModel.name
 
-    // Build optional customPricing payload for providers that support custom pricing
-    const pricingBuildResult = buildCustomPricingFromModelForm(type, newModel, {
-      needsCustomPricing: CUSTOM_PRICING_PROVIDER_KEYS.has(getProviderKey(provider.id)),
-    })
-    if (!pricingBuildResult.ok) {
-      alert(t('fillPricing'))
-      return
+    setIsModelSavePending(true)
+    try {
+      let protocolFields: Pick<CustomModel, 'llmProtocol' | 'llmProtocolCheckedAt'> | null = null
+      if (shouldProbeModelLlmProtocol({ providerId: provider.id, modelType: type })) {
+        const flushed = await flushConfigBeforeProbe()
+        if (!flushed) return
+
+        try {
+          protocolFields = await probeModelLlmProtocolViaApi({
+            providerId: provider.id,
+            modelId: finalModelId,
+          })
+        } catch (error) {
+          alert(resolveProbeFailureMessage(error))
+          return
+        }
+      }
+
+      onAddModel({
+        modelId: finalModelId,
+        modelKey: finalModelKey,
+        name: finalName,
+        type,
+        provider: provider.id,
+        price: 0,
+        ...(protocolFields ? protocolFields : {}),
+      })
+
+      setNewModel(EMPTY_MODEL_FORM)
+      setBatchMode(false)
+      setShowAddForm(null)
+    } finally {
+      setIsModelSavePending(false)
     }
-    const customPricing = pricingBuildResult.customPricing
-
-    onAddModel({
-      modelId: finalModelId,
-      modelKey: finalModelKey,
-      name: finalName,
-      type,
-      provider: provider.id,
-      price: 0,
-      ...(customPricing ? { customPricing } : {}),
-    })
-
-    setNewModel(EMPTY_MODEL_FORM)
-    setBatchMode(false)
-    setShowAddForm(null)
   }
 
   const handleCancelAdd = () => {
@@ -385,7 +699,80 @@ export function useProviderCardState({
     setBatchMode(false)
   }
 
-  const maskedKey = provider.apiKey ? '•'.repeat(20) : ''
+  const upsertModelFromAssistantDraft = useCallback((draft: AssistantDraftModel) => {
+    const modelKey = encodeModelKey(draft.provider, draft.modelId)
+    const checkedAt = new Date().toISOString()
+    const currentModels = allModels || models
+    const existed = currentModels.find((item) => item.modelKey === modelKey)
+    if (existed) {
+      onUpdateModel?.(modelKey, {
+        name: draft.name,
+        modelId: draft.modelId,
+        provider: draft.provider,
+        compatMediaTemplate: draft.compatMediaTemplate,
+        compatMediaTemplateCheckedAt: checkedAt,
+        compatMediaTemplateSource: 'ai',
+      })
+      return
+    }
+    onAddModel({
+      modelId: draft.modelId,
+      modelKey,
+      name: draft.name,
+      type: draft.type,
+      provider: draft.provider,
+      price: 0,
+      compatMediaTemplate: draft.compatMediaTemplate,
+      compatMediaTemplateCheckedAt: checkedAt,
+      compatMediaTemplateSource: 'ai',
+    })
+  }, [allModels, models, onAddModel, onUpdateModel])
+
+  const assistantChat = useAssistantChat({
+    assistantId: 'api-config-template',
+    context: { providerId: provider.id },
+    enabled: assistantEnabled,
+    onSaved: (event) => {
+      setAssistantSavedEvent(event)
+      if (event.draftModel) {
+        upsertModelFromAssistantDraft(event.draftModel)
+        return
+      }
+      onUpdateModel?.(event.savedModelKey, {
+        compatMediaTemplateSource: 'ai',
+      })
+    },
+  })
+
+  const openAssistant = useCallback(() => {
+    if (!assistantEnabled) return
+    setAssistantSavedEvent(null)
+    setIsAssistantOpen(true)
+  }, [assistantEnabled])
+
+  const closeAssistant = useCallback(() => {
+    setIsAssistantOpen(false)
+    setAssistantSavedEvent(null)
+    assistantChat.clear()
+  }, [assistantChat])
+
+  const handleAssistantSend = useCallback(async (content?: string): Promise<void> => {
+    if (!assistantEnabled || assistantChat.pending || assistantSavedEvent !== null) return
+    const flushed = await flushConfigBeforeProbe()
+    if (!flushed) return
+    await assistantChat.send(content)
+  }, [
+    assistantEnabled,
+    assistantChat,
+    assistantSavedEvent,
+    flushConfigBeforeProbe,
+  ])
+
+  const maskedKey = (() => {
+    const key = provider.apiKey || ''
+    if (key.length <= 8) return '•'.repeat(key.length)
+    return `${key.slice(0, 4)}${'•'.repeat(50)}`
+  })()
 
   return {
     providerKey,
@@ -427,6 +814,19 @@ export function useProviderCardState({
     handleSaveModel,
     handleAddModel,
     handleCancelAdd,
-    needsCustomPricing: CUSTOM_PRICING_PROVIDER_KEYS.has(providerKey),
+    needsCustomPricing: false,
+    keyTestStatus,
+    keyTestSteps,
+    handleForceSaveKey,
+    handleTestOnly,
+    handleDismissTest,
+    isModelSavePending,
+    assistantEnabled,
+    isAssistantOpen,
+    assistantSavedEvent,
+    assistantChat,
+    openAssistant,
+    closeAssistant,
+    handleAssistantSend,
   }
 }

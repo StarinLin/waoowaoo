@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { addCharacterPromptSuffix, addLocationPromptSuffix, getArtStylePrompt } from '@/lib/constants'
 import { type TaskJobData } from '@/lib/task/types'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
+import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
 import {
   assertTaskActive,
@@ -84,9 +85,10 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
 
     const descriptions = parseJsonStringArray(appearance.descriptions)
     const base = descriptions.length ? descriptions : [appearance.description || '']
+    const count = normalizeImageGenerationCount('character', payload.count)
     const imageUrls: string[] = []
 
-    for (let i = 0; i < Math.min(3, base.length || 1); i++) {
+    for (let i = 0; i < count; i++) {
       const raw = base[i] || base[0]
       const prompt = artStyle ? `${addCharacterPromptSuffix(raw)}，${artStyle}` : addCharacterPromptSuffix(raw)
       const cosKey = await generateLabeledImageToCos({

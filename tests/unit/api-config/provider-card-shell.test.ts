@@ -19,5 +19,7 @@ describe('provider card shell compatibility layer badge', () => {
   it('does not show compatibility label for preset providers', () => {
     expect(getCompatibilityLayerBadgeLabel('google', t)).toBeNull()
     expect(getCompatibilityLayerBadgeLabel('ark', t)).toBeNull()
+    expect(getCompatibilityLayerBadgeLabel('bailian', t)).toBeNull()
+    expect(getCompatibilityLayerBadgeLabel('siliconflow', t)).toBeNull()
   })
 })

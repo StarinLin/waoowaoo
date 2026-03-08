@@ -30,7 +30,7 @@ const authState = vi.hoisted<AuthState>(() => ({
   projectMode: 'novel-promotion',
 }))
 
-const submitTaskMock = vi.hoisted(() => vi.fn<[], Promise<SubmitResult>>())
+const submitTaskMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<SubmitResult>>())
 
 const configServiceMock = vi.hoisted(() => ({
   getUserModelConfig: vi.fn(async () => ({
@@ -206,7 +206,7 @@ vi.mock('@/lib/task/has-output', () => hasOutputMock)
 vi.mock('@/lib/billing', () => ({
   buildDefaultTaskBillingInfo: vi.fn(() => ({ mode: 'default' })),
 }))
-vi.mock('@/lib/qwen-voice-design', () => ({
+vi.mock('@/lib/providers/bailian/voice-design', () => ({
   validateVoicePrompt: vi.fn(() => ({ valid: true })),
   validatePreviewText: vi.fn(() => ({ valid: true })),
 }))
@@ -229,6 +229,24 @@ vi.mock('@/lib/api-config', () => ({
   resolveModelSelection: vi.fn(async () => ({
     model: 'img::storyboard',
   })),
+  resolveModelSelectionOrSingle: vi.fn(async (_userId: string, model: string | null | undefined) => {
+    const modelKey = typeof model === 'string' && model.trim().length > 0
+      ? model.trim()
+      : 'fal::audio-model'
+    const separator = modelKey.indexOf('::')
+    const provider = separator === -1 ? modelKey : modelKey.slice(0, separator)
+    const modelId = separator === -1 ? modelKey : modelKey.slice(separator + 2)
+    return {
+      provider,
+      modelId,
+      modelKey,
+      mediaType: 'audio',
+    }
+  }),
+  getProviderKey: vi.fn((providerId: string) => {
+    const marker = providerId.indexOf(':')
+    return marker === -1 ? providerId : providerId.slice(0, marker)
+  }),
 }))
 vi.mock('@/lib/prisma', () => ({
   prisma: prismaMock,
@@ -248,7 +266,7 @@ function toModuleImportPath(routeFile: string): string {
 const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
   {
     routeFile: 'src/app/api/asset-hub/generate-image/route.ts',
-    body: { type: 'character', id: 'global-character-1', appearanceIndex: 0 },
+    body: { type: 'character', id: 'global-character-1', appearanceIndex: 0, artStyle: 'realistic' },
     expectedTaskType: TASK_TYPE.ASSET_HUB_IMAGE,
     expectedTargetType: 'GlobalCharacter',
     expectedProjectId: 'global-asset-hub',

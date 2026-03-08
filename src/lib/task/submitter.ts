@@ -11,7 +11,13 @@ import {
   updateTaskPayload,
 } from './service'
 import { TASK_EVENT_TYPE, type TaskBillingInfo, type TaskType } from './types'
-import { buildDefaultTaskBillingInfo, isBillableTaskType, InsufficientBalanceError, prepareTaskBilling } from '@/lib/billing'
+import {
+  buildDefaultTaskBillingInfo,
+  getBillingMode,
+  InsufficientBalanceError,
+  isBillableTaskType,
+  prepareTaskBilling,
+} from '@/lib/billing'
 import { ApiError } from '@/lib/api-errors'
 import { getTaskFlowMeta } from '@/lib/llm-observe/stage-pipeline'
 import type { Locale } from '@/i18n/routing'
@@ -134,7 +140,7 @@ export async function submitTask(params: {
     billingInfo: resolvedBillingInfo || null,
   })
   let runId = resolveRunIdFromPayload(task.payload)
-  if (!deduped && isAiTaskType(params.type)) {
+  if (!deduped && isAiTaskType(params.type) && !runId) {
     const run = await createRun({
       userId: params.userId,
       projectId: params.projectId,
@@ -160,10 +166,22 @@ export async function submitTask(params: {
   }
 
   let preparedBillingInfo = (task.billingInfo || resolvedBillingInfo || null) as TaskBillingInfo | null
-  if (!deduped && isBillableTaskType(params.type) && (!computedBillingInfo || !computedBillingInfo.billable)) {
-    await markTaskFailed(task.id, 'INVALID_PARAMS', `missing server-generated billingInfo for billable task type: ${params.type}`)
-    throw new ApiError('INVALID_PARAMS', {
-      message: `missing server-generated billingInfo for billable task type: ${params.type}`,
+  if (!deduped && isBillableTaskType(params.type) && preparedBillingInfo?.billable !== true) {
+    const billingMode = await getBillingMode()
+    if (billingMode === 'ENFORCE') {
+      await markTaskFailed(task.id, 'INVALID_PARAMS', `missing server-generated billingInfo for billable task type: ${params.type}`)
+      throw new ApiError('INVALID_PARAMS', {
+        message: `missing server-generated billingInfo for billable task type: ${params.type}`,
+      })
+    }
+    logger.warn({
+      action: 'task.submit.billing_info_missing_non_enforce',
+      message: `missing billingInfo ignored in ${billingMode} mode`,
+      taskId: task.id,
+      details: {
+        type: params.type,
+        billingMode,
+      },
     })
   }
 

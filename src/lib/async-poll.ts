@@ -18,7 +18,12 @@ import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core
 
 import { queryFalStatus } from './async-submit'
 import { queryGeminiBatchStatus, querySeedanceVideoStatus, queryGoogleVideoStatus } from './async-task-utils'
-import { getProviderConfig } from './api-config'
+import { getProviderConfig, getUserModels } from './api-config'
+import { buildRenderedTemplateRequest, buildTemplateVariables, normalizeResponseJson, readJsonPath } from './openai-compat-template-runtime'
+import { composeModelKey } from './model-config-contract'
+
+const OPENAI_COMPAT_PROVIDER_PREFIX = 'openai-compatible:'
+const PROVIDER_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export interface PollResult {
     status: 'pending' | 'completed' | 'failed'
@@ -42,11 +47,12 @@ function getErrorMessage(error: unknown): string {
  * 解析 externalId 获取 provider、type 和请求信息
  */
 export function parseExternalId(externalId: string): {
-    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'UNKNOWN'
+    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'OCOMPAT' | 'BAILIAN' | 'SILICONFLOW' | 'UNKNOWN'
     type: 'VIDEO' | 'IMAGE' | 'BATCH' | 'UNKNOWN'
     endpoint?: string
     requestId: string
     providerToken?: string
+    modelKeyToken?: string
 } {
     // 标准格式：PROVIDER:TYPE:...
     if (externalId.startsWith('FAL:')) {
@@ -157,9 +163,55 @@ export function parseExternalId(externalId: string): {
         }
     }
 
+    if (externalId.startsWith('OCOMPAT:')) {
+        const parts = externalId.split(':')
+        const type = parts[1]
+        const providerToken = parts[2]
+        const modelKeyToken = parts[3]
+        const requestId = parts.slice(4).join(':')
+        if ((type !== 'VIDEO' && type !== 'IMAGE') || !providerToken || !modelKeyToken || !requestId) {
+            throw new Error(`无效 OCOMPAT externalId: "${externalId}"，应为 OCOMPAT:TYPE:providerToken:modelKeyToken:taskId`)
+        }
+        return {
+            provider: 'OCOMPAT',
+            type: type as 'VIDEO' | 'IMAGE',
+            providerToken,
+            modelKeyToken,
+            requestId,
+        }
+    }
+
+    if (externalId.startsWith('BAILIAN:')) {
+        const parts = externalId.split(':')
+        const type = parts[1]
+        const requestId = parts.slice(2).join(':')
+        if ((type !== 'VIDEO' && type !== 'IMAGE') || !requestId) {
+            throw new Error(`无效 BAILIAN externalId: "${externalId}"，应为 BAILIAN:TYPE:requestId`)
+        }
+        return {
+            provider: 'BAILIAN',
+            type: type as 'VIDEO' | 'IMAGE',
+            requestId,
+        }
+    }
+
+    if (externalId.startsWith('SILICONFLOW:')) {
+        const parts = externalId.split(':')
+        const type = parts[1]
+        const requestId = parts.slice(2).join(':')
+        if ((type !== 'VIDEO' && type !== 'IMAGE') || !requestId) {
+            throw new Error(`无效 SILICONFLOW externalId: "${externalId}"，应为 SILICONFLOW:TYPE:requestId`)
+        }
+        return {
+            provider: 'SILICONFLOW',
+            type: type as 'VIDEO' | 'IMAGE',
+            requestId,
+        }
+    }
+
     throw new Error(
         `无法识别的 externalId 格式: "${externalId}". ` +
-        `支持的格式: FAL:TYPE:endpoint:requestId, ARK:TYPE:requestId, GEMINI:BATCH:batchName, GOOGLE:VIDEO:operationName, MINIMAX:TYPE:taskId, VIDU:TYPE:taskId, OPENAI:VIDEO:providerToken:videoId`
+        `支持的格式: FAL:TYPE:endpoint:requestId, ARK:TYPE:requestId, GEMINI:BATCH:batchName, GOOGLE:VIDEO:operationName, MINIMAX:TYPE:taskId, VIDU:TYPE:taskId, OPENAI:VIDEO:providerToken:videoId, OCOMPAT:TYPE:providerToken:modelKeyToken:taskId, BAILIAN:TYPE:requestId, SILICONFLOW:TYPE:requestId`
     )
 }
 
@@ -193,6 +245,12 @@ export async function pollAsyncTask(
             return await pollViduTask(parsed.requestId, userId)
         case 'OPENAI':
             return await pollOpenAIVideoTask(parsed.requestId, userId, parsed.providerToken)
+        case 'OCOMPAT':
+            return await pollOCompatTask(parsed.type, parsed.requestId, userId, parsed.providerToken, parsed.modelKeyToken)
+        case 'BAILIAN':
+            return await pollBailianTask(parsed.requestId, userId)
+        case 'SILICONFLOW':
+            return await pollSiliconFlowTask(parsed.requestId)
         default:
             // 🔥 移除 fallback：未知 provider 直接抛出错误
             throw new Error(`未知的 Provider: ${parsed.provider}`)
@@ -200,11 +258,154 @@ export async function pollAsyncTask(
 }
 
 function decodeProviderId(token: string): string {
+    const value = token.trim()
+    if (!value) {
+        throw new Error('OPENAI_PROVIDER_TOKEN_INVALID')
+    }
+    if (value.startsWith('u_')) {
+        const uuid = value.slice(2).trim()
+        if (!PROVIDER_UUID_PATTERN.test(uuid)) {
+            throw new Error('OPENAI_PROVIDER_TOKEN_INVALID')
+        }
+        return `${OPENAI_COMPAT_PROVIDER_PREFIX}${uuid.toLowerCase()}`
+    }
+    if (PROVIDER_UUID_PATTERN.test(value)) {
+        return `${OPENAI_COMPAT_PROVIDER_PREFIX}${value.toLowerCase()}`
+    }
+    const encoded = value.startsWith('b64_') ? value.slice(4) : value
     try {
-        return Buffer.from(token, 'base64url').toString('utf8')
+        const decoded = Buffer.from(encoded, 'base64url').toString('utf8').trim()
+        if (!decoded) {
+            throw new Error('OPENAI_PROVIDER_TOKEN_INVALID')
+        }
+        return decoded
     } catch {
         throw new Error('OPENAI_PROVIDER_TOKEN_INVALID')
     }
+}
+
+function decodeModelKey(token: string): string {
+    try {
+        return Buffer.from(token, 'base64url').toString('utf8')
+    } catch {
+        throw new Error('OCOMPAT_MODEL_KEY_TOKEN_INVALID')
+    }
+}
+
+function resolveOCompatModelKey(providerId: string, token: string): string {
+    const decoded = decodeModelKey(token).trim()
+    if (!decoded) {
+        throw new Error('OCOMPAT_MODEL_KEY_TOKEN_INVALID')
+    }
+    if (decoded.includes('::')) {
+        return decoded
+    }
+    const composed = composeModelKey(providerId, decoded)
+    if (!composed) {
+        throw new Error('OCOMPAT_MODEL_KEY_TOKEN_INVALID')
+    }
+    return composed
+}
+
+async function pollOCompatTask(
+    type: 'VIDEO' | 'IMAGE' | 'BATCH' | 'UNKNOWN',
+    taskId: string,
+    userId: string,
+    providerToken?: string,
+    modelKeyToken?: string,
+): Promise<PollResult> {
+    if (!providerToken) throw new Error('OCOMPAT_PROVIDER_TOKEN_MISSING')
+    if (!modelKeyToken) throw new Error('OCOMPAT_MODEL_KEY_TOKEN_MISSING')
+    const providerId = decodeProviderId(providerToken)
+    const modelKey = resolveOCompatModelKey(providerId, modelKeyToken)
+    const config = await getProviderConfig(userId, providerId)
+    if (!config.baseUrl) throw new Error(`PROVIDER_BASE_URL_MISSING: ${providerId}`)
+
+    const models = await getUserModels(userId)
+    const model = models.find((item) => item.modelKey === modelKey)
+    if (!model || !model.compatMediaTemplate) {
+        throw new Error(`OCOMPAT_TEMPLATE_NOT_FOUND: ${modelKey}`)
+    }
+    const template = model.compatMediaTemplate
+    if (template.mode !== 'async' || !template.status) {
+        throw new Error(`OCOMPAT_TEMPLATE_NOT_ASYNC: ${modelKey}`)
+    }
+
+    const variables = buildTemplateVariables({
+        model: model.modelId,
+        prompt: '',
+        taskId,
+    })
+    const statusRequest = await buildRenderedTemplateRequest({
+        baseUrl: config.baseUrl,
+        endpoint: template.status,
+        variables,
+        defaultAuthHeader: `Bearer ${config.apiKey}`,
+    })
+    const response = await fetch(statusRequest.endpointUrl, {
+        method: statusRequest.method,
+        headers: statusRequest.headers,
+    })
+    const rawText = await response.text().catch(() => '')
+    if (!response.ok) {
+        return {
+            status: 'failed',
+            error: `OCOMPAT status request failed: ${response.status}`,
+        }
+    }
+    const payload = normalizeResponseJson(rawText)
+    const statusRaw = readJsonPath(payload, template.response.statusPath)
+    const status = typeof statusRaw === 'string' ? statusRaw.trim().toLowerCase() : ''
+    if (!status) {
+        return {
+            status: 'failed',
+            error: 'OCOMPAT status path resolve failed',
+        }
+    }
+    const doneStates = (template.polling?.doneStates || []).map((item) => item.toLowerCase())
+    const failStates = (template.polling?.failStates || []).map((item) => item.toLowerCase())
+    if (doneStates.includes(status)) {
+        const outputUrl = readJsonPath(payload, template.response.outputUrlPath)
+        if (typeof outputUrl === 'string' && outputUrl.trim()) {
+            return {
+                status: 'completed',
+                resultUrl: outputUrl.trim(),
+                ...(type === 'VIDEO'
+                    ? { videoUrl: outputUrl.trim() }
+                    : { imageUrl: outputUrl.trim() }),
+            }
+        }
+        if (template.content) {
+            const contentRequest = await buildRenderedTemplateRequest({
+                baseUrl: config.baseUrl,
+                endpoint: template.content,
+                variables,
+                defaultAuthHeader: `Bearer ${config.apiKey}`,
+            })
+            return {
+                status: 'completed',
+                resultUrl: contentRequest.endpointUrl,
+                ...(type === 'VIDEO'
+                    ? { videoUrl: contentRequest.endpointUrl }
+                    : { imageUrl: contentRequest.endpointUrl }),
+                downloadHeaders: {
+                    ...contentRequest.headers,
+                },
+            }
+        }
+        return {
+            status: 'failed',
+            error: 'OCOMPAT completed but output URL missing',
+        }
+    }
+    if (failStates.includes(status)) {
+        const errorRaw = readJsonPath(payload, template.response.errorPath)
+        return {
+            status: 'failed',
+            error: typeof errorRaw === 'string' && errorRaw.trim() ? errorRaw.trim() : `OCOMPAT task failed: ${status}`,
+        }
+    }
+    return { status: 'pending' }
 }
 
 async function pollOpenAIVideoTask(
@@ -508,6 +709,154 @@ async function pollViduTask(
     }
 }
 
+interface BailianTaskQueryResultItem {
+    url?: string
+    video_url?: string
+    image_url?: string
+}
+
+interface BailianTaskQueryResponse {
+    code?: string
+    message?: string
+    task_status?: string
+    output?: {
+        task_status?: string
+        code?: string
+        message?: string
+        video_url?: string
+        image_url?: string
+        results?: BailianTaskQueryResultItem[]
+    }
+}
+
+function readBailianTaskQueryMediaUrl(data: BailianTaskQueryResponse): {
+    mediaUrl?: string
+    videoUrl?: string
+    imageUrl?: string
+} {
+    const output = data.output
+    const videoUrl = typeof output?.video_url === 'string' ? output.video_url.trim() : ''
+    if (videoUrl) {
+        return { mediaUrl: videoUrl, videoUrl }
+    }
+
+    const imageUrl = typeof output?.image_url === 'string' ? output.image_url.trim() : ''
+    if (imageUrl) {
+        return { mediaUrl: imageUrl, imageUrl }
+    }
+
+    const firstResult = Array.isArray(output?.results) ? output.results[0] : undefined
+    if (!firstResult || typeof firstResult !== 'object') {
+        return {}
+    }
+    const firstVideoUrl = typeof firstResult.video_url === 'string' ? firstResult.video_url.trim() : ''
+    if (firstVideoUrl) {
+        return { mediaUrl: firstVideoUrl, videoUrl: firstVideoUrl }
+    }
+    const firstImageUrl = typeof firstResult.image_url === 'string' ? firstResult.image_url.trim() : ''
+    if (firstImageUrl) {
+        return { mediaUrl: firstImageUrl, imageUrl: firstImageUrl }
+    }
+    const firstUrl = typeof firstResult.url === 'string' ? firstResult.url.trim() : ''
+    if (firstUrl) {
+        return { mediaUrl: firstUrl }
+    }
+
+    return {}
+}
+
+async function pollBailianTask(requestId: string, userId: string): Promise<PollResult> {
+    const logPrefix = '[Bailian Query]'
+
+    try {
+        const { apiKey } = await getProviderConfig(userId, 'bailian')
+        const response = await fetch(
+            `https://dashscope.aliyuncs.com/api/v1/tasks/${encodeURIComponent(requestId)}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                },
+            },
+        )
+
+        const raw = await response.text()
+        let data: BailianTaskQueryResponse = {}
+        if (raw) {
+            try {
+                const parsed = JSON.parse(raw) as unknown
+                if (parsed && typeof parsed === 'object') {
+                    data = parsed as BailianTaskQueryResponse
+                } else {
+                    throw new Error('BAILIAN_TASK_QUERY_RESPONSE_INVALID')
+                }
+            } catch {
+                throw new Error('BAILIAN_TASK_QUERY_RESPONSE_INVALID_JSON')
+            }
+        }
+
+        const outputCode = typeof data.output?.code === 'string' ? data.output.code.trim() : ''
+        const outputMessage = typeof data.output?.message === 'string' ? data.output.message.trim() : ''
+        const topLevelCode = typeof data.code === 'string' ? data.code.trim() : ''
+        const topLevelMessage = typeof data.message === 'string' ? data.message.trim() : ''
+        const resolvedCode = outputCode || topLevelCode
+        const resolvedMessage = outputMessage || topLevelMessage
+
+        if (!response.ok) {
+            return {
+                status: 'failed',
+                error: `Bailian: 查询失败 ${response.status} ${resolvedCode || resolvedMessage}`.trim(),
+            }
+        }
+
+        const taskStatus = (typeof data.output?.task_status === 'string'
+            ? data.output.task_status
+            : typeof data.task_status === 'string'
+                ? data.task_status
+                : '').trim().toUpperCase()
+
+        if (taskStatus === 'FAILED' || taskStatus === 'CANCELED' || taskStatus === 'CANCELLED') {
+            return {
+                status: 'failed',
+                error: `Bailian: ${resolvedCode || resolvedMessage || '任务失败'}`,
+            }
+        }
+
+        if (taskStatus === 'SUCCEEDED' || taskStatus === 'SUCCESS') {
+            const { mediaUrl, videoUrl, imageUrl } = readBailianTaskQueryMediaUrl(data)
+            if (!mediaUrl) {
+                return {
+                    status: 'failed',
+                    error: 'Bailian: 任务完成但未返回结果URL',
+                }
+            }
+            return {
+                status: 'completed',
+                resultUrl: mediaUrl,
+                videoUrl,
+                imageUrl,
+            }
+        }
+
+        return {
+            status: 'pending',
+        }
+    } catch (error: unknown) {
+        const errorMessage = getErrorMessage(error)
+        _ulogError(`${logPrefix} task_id=${requestId} 异常:`, error)
+        return {
+            status: 'failed',
+            error: `Bailian: ${errorMessage}`,
+        }
+    }
+}
+
+async function pollSiliconFlowTask(requestId: string): Promise<PollResult> {
+    return {
+        status: 'failed',
+        error: `ASYNC_POLL_NOT_IMPLEMENTED: SILICONFLOW task polling not implemented (${requestId})`,
+    }
+}
+
 /**
  * 查询 Vidu 任务状态
  */
@@ -599,11 +948,12 @@ async function queryViduTaskStatus(
  * 创建标准格式的 externalId
  */
 export function formatExternalId(
-    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI',
+    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'OCOMPAT' | 'BAILIAN' | 'SILICONFLOW',
     type: 'VIDEO' | 'IMAGE' | 'BATCH',
     requestId: string,
     endpoint?: string,
     providerToken?: string,
+    modelKeyToken?: string,
 ): string {
     if (provider === 'FAL') {
         if (!endpoint) {
@@ -616,6 +966,15 @@ export function formatExternalId(
             throw new Error('OPENAI externalId requires providerToken')
         }
         return `OPENAI:${type}:${providerToken}:${requestId}`
+    }
+    if (provider === 'OCOMPAT') {
+        if (!providerToken) {
+            throw new Error('OCOMPAT externalId requires providerToken')
+        }
+        if (!modelKeyToken) {
+            throw new Error('OCOMPAT externalId requires modelKeyToken')
+        }
+        return `OCOMPAT:${type}:${providerToken}:${modelKeyToken}:${requestId}`
     }
     return `${provider}:${type}:${requestId}`
 }

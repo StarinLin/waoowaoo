@@ -6,12 +6,14 @@ import { queryKeys } from '../keys'
 import { useTaskTargetStateMap } from './useTaskTargetStateMap'
 import { resolveTaskErrorMessage } from '@/lib/task/error-message'
 import type { MediaRef } from '@/types/project'
+import { apiFetch } from '@/lib/api-fetch'
 
 // ============ 类型定义 ============
 export interface GlobalCharacterAppearance {
     id: string
     appearanceIndex: number
     changeReason: string
+    artStyle: string | null
     description: string | null
     descriptionSource: string | null
     imageUrl: string | null
@@ -53,6 +55,7 @@ export interface GlobalLocation {
     id: string
     name: string
     summary: string | null
+    artStyle: string | null
     folderId: string | null
     images: GlobalLocationImage[]
 }
@@ -95,7 +98,7 @@ export function useGlobalCharacters(folderId?: string | null) {
         queryFn: async () => {
             const params = new URLSearchParams()
             if (folderId) params.set('folderId', folderId)
-            const res = await fetch(`/api/asset-hub/characters?${params}`)
+            const res = await apiFetch(`/api/asset-hub/characters?${params}`)
             if (!res.ok) throw new Error('Failed to fetch characters')
             const data = await res.json()
             return data.characters as GlobalCharacter[]
@@ -116,7 +119,7 @@ export function useGlobalCharacters(folderId?: string | null) {
                     targetId: appearance.id,
                     types: GLOBAL_MODIFY_TASK_TYPES,
                 })
-                const imageCount = Math.max(3, appearance.imageUrls?.length || 0)
+                const imageCount = Math.max(1, appearance.imageUrls?.length || 0)
                 for (let index = 0; index < imageCount; index += 1) {
                     targets.push({
                         targetType: 'GlobalCharacterAppearance',
@@ -142,7 +145,7 @@ export function useGlobalCharacters(folderId?: string | null) {
         return characters.map((character) => ({
             ...character,
             appearances: (character.appearances || []).map((appearance) => {
-                const imageCount = Math.max(3, appearance.imageUrls?.length || 0)
+                const imageCount = Math.max(1, appearance.imageUrls?.length || 0)
                 let hasAppearanceTask = isRunningPhase(
                     getState('GlobalCharacterAppearance', appearance.id)?.phase,
                 )
@@ -191,7 +194,7 @@ export function useGlobalLocations(folderId?: string | null) {
         queryFn: async () => {
             const params = new URLSearchParams()
             if (folderId) params.set('folderId', folderId)
-            const res = await fetch(`/api/asset-hub/locations?${params}`)
+            const res = await apiFetch(`/api/asset-hub/locations?${params}`)
             if (!res.ok) throw new Error('Failed to fetch locations')
             const data = await res.json()
             return data.locations as GlobalLocation[]
@@ -271,7 +274,7 @@ export function useGlobalVoices(folderId?: string | null) {
         queryFn: async () => {
             const params = new URLSearchParams()
             if (folderId) params.set('folderId', folderId)
-            const res = await fetch(`/api/asset-hub/voices?${params}`)
+            const res = await apiFetch(`/api/asset-hub/voices?${params}`)
             if (!res.ok) throw new Error('Failed to fetch voices')
             const data = await res.json()
             return data.voices as GlobalVoice[]
@@ -286,7 +289,7 @@ export function useGlobalFolders() {
     return useQuery({
         queryKey: queryKeys.globalAssets.folders(),
         queryFn: async () => {
-            const res = await fetch('/api/asset-hub/folders')
+            const res = await apiFetch('/api/asset-hub/folders')
             if (!res.ok) throw new Error('Failed to fetch folders')
             const data = await res.json()
             return data.folders as GlobalFolder[]
@@ -304,7 +307,7 @@ export function useCreateFolder() {
 
     return useMutation({
         mutationFn: async ({ name }: { name: string }) => {
-            const res = await fetch('/api/asset-hub/folders', {
+            const res = await apiFetch('/api/asset-hub/folders', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name }),
@@ -329,7 +332,7 @@ export function useUpdateFolder() {
 
     return useMutation({
         mutationFn: async ({ folderId, name }: { folderId: string; name: string }) => {
-            const res = await fetch('/api/asset-hub/folders', {
+            const res = await apiFetch('/api/asset-hub/folders', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ folderId, name }),
@@ -354,7 +357,7 @@ export function useDeleteFolder() {
 
     return useMutation({
         mutationFn: async ({ folderId }: { folderId: string }) => {
-            const res = await fetch(`/api/asset-hub/folders?folderId=${folderId}`, {
+            const res = await apiFetch(`/api/asset-hub/folders?folderId=${folderId}`, {
                 method: 'DELETE',
             })
             if (!res.ok) {

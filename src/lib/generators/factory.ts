@@ -20,10 +20,17 @@ import {
 import { GoogleVeoVideoGenerator } from './video/google'
 import { OpenAICompatibleVideoGenerator } from './video'
 import { Flow2APIVideoGenerator } from './video'
-import { QwenTTSGenerator } from './audio'
 import { MinimaxVideoGenerator } from './minimax'
 import { ViduVideoGenerator } from './vidu'
 import { getProviderKey } from '@/lib/api-config'
+import {
+    BailianAudioGenerator,
+    BailianImageGenerator,
+    BailianVideoGenerator,
+    SiliconFlowAudioGenerator,
+    SiliconFlowImageGenerator,
+    SiliconFlowVideoGenerator,
+} from './official'
 
 /**
  * 根据 provider 创建图片生成器
@@ -60,6 +67,10 @@ export function createImageGenerator(provider: string, modelId?: string): ImageG
             return new OpenAICompatibleImageGenerator(actualModelId, provider)
         case 'flow2api':
             return new Flow2APIImageGenerator(actualModelId, provider)
+        case 'bailian':
+            return new BailianImageGenerator()
+        case 'siliconflow':
+            return new SiliconFlowImageGenerator()
         default:
             throw new Error(`Unknown image generator provider: ${provider}`)
     }
@@ -87,6 +98,10 @@ export function createVideoGenerator(provider: string): VideoGenerator {
             return new OpenAICompatibleVideoGenerator(provider)
         case 'flow2api':
             return new Flow2APIVideoGenerator(provider)
+        case 'bailian':
+            return new BailianVideoGenerator()
+        case 'siliconflow':
+            return new SiliconFlowVideoGenerator()
         default:
             throw new Error(`Unknown video generator provider: ${provider}`)
     }
@@ -98,8 +113,10 @@ export function createVideoGenerator(provider: string): VideoGenerator {
 export function createAudioGenerator(provider: string): AudioGenerator {
     const providerKey = getProviderKey(provider).toLowerCase()
     switch (providerKey) {
-        case 'qwen':
-            return new QwenTTSGenerator()
+        case 'bailian':
+            return new BailianAudioGenerator()
+        case 'siliconflow':
+            return new SiliconFlowAudioGenerator()
         default:
             throw new Error(`Unknown audio generator provider: ${provider}`)
     }

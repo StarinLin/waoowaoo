@@ -68,7 +68,10 @@ export function useWorkspaceVideoActions({
     } catch (err: unknown) {
       if (isAbortError(err)) {
         _ulogInfo(t('execution.requestAborted'))
+        return
       }
+      alert(`${t('execution.generationFailed')}: ${getErrorMessage(err)}`)
+      throw err
     }
   }
 
@@ -94,6 +97,7 @@ export function useWorkspaceVideoActions({
         return
       }
       alert(`${t('execution.batchVideoFailed')}: ${getErrorMessage(err)}`)
+      throw err
     }
   }
 
