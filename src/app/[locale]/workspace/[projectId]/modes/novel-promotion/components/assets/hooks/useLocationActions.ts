@@ -96,31 +96,27 @@ export function useLocationActions({
     }, [confirmLocationSelectionMutation, showToast, t])
 
     // 单张重新生成场景图片 - 🔥 V6.7: 使用mutation hook
-    const handleRegenerateSingleLocation = useCallback((locationId: string, imageIndex: number) => {
-        regenerateSingleImage.mutate(
-            { locationId, imageIndex },
-            {
-                onError: (error) => {
-                    if (!isAbortError(error)) {
-                        alert(t('image.regenerateFailed', { error: error.message }))
-                    }
-                }
+    const handleRegenerateSingleLocation = useCallback(async (locationId: string, imageIndex: number) => {
+        try {
+            await regenerateSingleImage.mutateAsync({ locationId, imageIndex })
+        } catch (error: unknown) {
+            if (!isAbortError(error)) {
+                alert(t('image.regenerateFailed', { error: getErrorMessage(error, t('common.unknownError')) }))
             }
-        )
+            throw error
+        }
     }, [regenerateSingleImage, t])
 
     // 整组重新生成场景图片 - 🔥 V6.7: 使用mutation hook
-    const handleRegenerateLocationGroup = useCallback((locationId: string) => {
-        regenerateGroup.mutate(
-            { locationId },
-            {
-                onError: (error) => {
-                    if (!isAbortError(error)) {
-                        alert(t('image.regenerateFailed', { error: error.message }))
-                    }
-                }
+    const handleRegenerateLocationGroup = useCallback(async (locationId: string, count?: number) => {
+        try {
+            await regenerateGroup.mutateAsync({ locationId, count })
+        } catch (error: unknown) {
+            if (!isAbortError(error)) {
+                alert(t('image.regenerateFailed', { error: getErrorMessage(error, t('common.unknownError')) }))
             }
-        )
+            throw error
+        }
     }, [regenerateGroup, t])
 
     // 更新场景描述 - 🔥 保存到服务器

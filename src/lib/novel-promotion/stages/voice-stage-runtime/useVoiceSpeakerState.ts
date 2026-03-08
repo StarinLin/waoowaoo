@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
+import { getSpeakerVoicePreviewUrl, hasAnyVoiceBinding } from '@/lib/voice/provider-voice-binding'
 import type { Character, SpeakerVoiceEntry, VoiceLine } from './types'
 
 interface UseVoiceSpeakerStateParams {
@@ -36,8 +37,16 @@ export function useVoiceSpeakerState({
     const character = speakerCharacterMap[speaker]
     if (character?.customVoiceUrl) return character.customVoiceUrl
     const speakerVoice = speakerVoices[speaker]
-    if (speakerVoice?.audioUrl) return speakerVoice.audioUrl
-    return null
+    return getSpeakerVoicePreviewUrl(speakerVoice)
+  }, [speakerCharacterMap, speakerVoices])
+
+  const hasSpeakerVoiceBinding = useCallback((speaker: string): boolean => {
+    const character = speakerCharacterMap[speaker]
+    const speakerVoice = speakerVoices[speaker]
+    return hasAnyVoiceBinding({
+      character,
+      speakerVoice,
+    })
   }, [speakerCharacterMap, speakerVoices])
 
   const speakerStats = useMemo(() => {
@@ -61,16 +70,16 @@ export function useVoiceSpeakerState({
   }, [characters, projectSpeakers, voiceLines])
 
   const linesWithVoice = useMemo(() => (
-    voiceLines.filter((line) => !!getSpeakerVoiceUrl(line.speaker)).length
-  ), [getSpeakerVoiceUrl, voiceLines])
+    voiceLines.filter((line) => hasSpeakerVoiceBinding(line.speaker)).length
+  ), [hasSpeakerVoiceBinding, voiceLines])
 
   const linesWithAudio = useMemo(() => (
     voiceLines.filter((line) => !!line.audioUrl).length
   ), [voiceLines])
 
   const allSpeakersHaveVoice = useMemo(() => (
-    speakers.every((speaker) => !!getSpeakerVoiceUrl(speaker))
-  ), [getSpeakerVoiceUrl, speakers])
+    speakers.every((speaker) => hasSpeakerVoiceBinding(speaker))
+  ), [hasSpeakerVoiceBinding, speakers])
 
   return {
     speakerCharacterMap,
@@ -79,6 +88,7 @@ export function useVoiceSpeakerState({
     speakerOptions,
     matchCharacterBySpeaker,
     getSpeakerVoiceUrl,
+    hasSpeakerVoiceBinding,
     linesWithVoice,
     linesWithAudio,
     allSpeakersHaveVoice,

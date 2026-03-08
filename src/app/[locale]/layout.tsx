@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono, Poppins, Open_Sans } from "next/font/google";
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import "../globals.css";
 import { Providers } from "./providers";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+
 import { locales } from '@/i18n/routing';
 
 const geistSans = Geist({
@@ -72,6 +73,15 @@ export default async function LocaleLayout({
 
     return (
         <html lang={locale}>
+            <head>
+                {process.env.NODE_ENV === "development" && (
+                    <Script
+                        src="//unpkg.com/react-grab/dist/index.global.js"
+                        crossOrigin="anonymous"
+                        strategy="beforeInteractive"
+                    />
+                )}
+            </head>
             <body
                 className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} ${openSans.variable} antialiased`}
             >
@@ -80,7 +90,7 @@ export default async function LocaleLayout({
                         {children}
                     </Providers>
                 </NextIntlClientProvider>
-                <SpeedInsights />
+
             </body>
         </html>
     );

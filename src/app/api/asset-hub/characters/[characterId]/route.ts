@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { ApiError, apiHandler } from '@/lib/api-errors'
+import {
+    collectBailianManagedVoiceIds,
+    cleanupUnreferencedBailianVoices,
+} from '@/lib/providers/bailian'
 
 // 获取单个角色
 export const GET = apiHandler(async (
@@ -99,6 +103,20 @@ export const DELETE = apiHandler(async (
     if (!character || character.userId !== session.user.id) {
         throw new ApiError('FORBIDDEN')
     }
+
+    const candidateVoiceIds = collectBailianManagedVoiceIds([
+        {
+            voiceId: character.voiceId,
+            voiceType: character.voiceType,
+        },
+    ])
+    await cleanupUnreferencedBailianVoices({
+        voiceIds: candidateVoiceIds,
+        scope: {
+            userId: session.user.id,
+            excludeGlobalCharacterId: character.id,
+        },
+    })
 
     await prisma.globalCharacter.delete({
         where: { id: characterId }

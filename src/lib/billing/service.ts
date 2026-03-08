@@ -732,7 +732,7 @@ export async function withVoiceDesignBilling<T>(
       projectId: recordParams.projectId,
       action: recordParams.action,
       apiType: 'voice-design',
-      model: 'qwen',
+      model: 'bailian',
       quantity: 1,
       unit: 'call',
       metadata: recordParams.metadata,

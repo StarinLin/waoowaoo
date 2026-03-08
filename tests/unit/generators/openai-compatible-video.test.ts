@@ -11,7 +11,7 @@ const getProviderConfigMock = vi.hoisted(() => vi.fn(async () => ({
   baseUrl: 'https://oa.test/v1',
 })))
 
-const imageUrlToBase64Mock = vi.hoisted(() => vi.fn(async () => 'data:image/png;base64,QQ=='))
+const normalizeToBase64ForGenerationMock = vi.hoisted(() => vi.fn(async () => 'data:image/png;base64,QQ=='))
 
 vi.mock('openai', () => ({
   default: class OpenAI {
@@ -26,8 +26,8 @@ vi.mock('@/lib/api-config', () => ({
   getProviderConfig: getProviderConfigMock,
 }))
 
-vi.mock('@/lib/cos', () => ({
-  imageUrlToBase64: imageUrlToBase64Mock,
+vi.mock('@/lib/media/outbound-image', () => ({
+  normalizeToBase64ForGeneration: normalizeToBase64ForGenerationMock,
 }))
 
 import { OpenAICompatibleVideoGenerator } from '@/lib/generators/video/openai-compatible'
@@ -161,6 +161,6 @@ describe('OpenAICompatibleVideoGenerator', () => {
     })
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('OPENAI_VIDEO_ASPECT_RATIO_UNSUPPORTED')
+    expect(result.error).toContain('OPENAI_COMPAT_VIDEO_ASPECT_RATIO_UNSUPPORTED')
   })
 })

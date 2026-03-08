@@ -17,15 +17,10 @@ function readRequiredString(value: unknown, field: string): string {
   return value.trim()
 }
 
-function parseJsonPrompt(responseText: string): string {
-  let cleaned = responseText.trim()
-  cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '')
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) {
-    throw new Error('No JSON found in response')
-  }
+import { safeParseJsonObject } from '@/lib/json-repair'
 
-  const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+function parseJsonPrompt(responseText: string): string {
+  const parsed = safeParseJsonObject(responseText)
   const prompt = typeof parsed.prompt === 'string' ? parsed.prompt.trim() : ''
   if (!prompt) {
     throw new Error('No prompt field in response')

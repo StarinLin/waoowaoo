@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { addLocationPromptSuffix, getArtStylePrompt } from '@/lib/constants'
+import { addLocationPromptSuffix, getArtStylePrompt, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
 import { type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '../shared'
 import {
@@ -12,6 +12,15 @@ import {
   generateLabeledImageToCos,
   pickFirstString,
 } from './image-task-handler-shared'
+
+function resolvePayloadArtStyle(payload: AnyObj): ArtStyleValue | undefined {
+  if (!Object.prototype.hasOwnProperty.call(payload, 'artStyle')) return undefined
+  const parsedArtStyle = typeof payload.artStyle === 'string' ? payload.artStyle.trim() : ''
+  if (!isArtStyleValue(parsedArtStyle)) {
+    throw new Error('Invalid artStyle in IMAGE_LOCATION payload')
+  }
+  return parsedArtStyle
+}
 
 interface LocationImageRecord {
   id: string
@@ -47,7 +56,8 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   const modelId = models.locationModel
   if (!modelId) throw new Error('Location model not configured')
 
-  const artStyle = getArtStylePrompt(models.artStyle, job.data.locale)
+  const payloadArtStyle = resolvePayloadArtStyle(payload)
+  const artStyle = getArtStylePrompt(payloadArtStyle ?? models.artStyle, job.data.locale)
 
   // targetId may be locationId (group) or locationImageId (single)
   const maybeLocationImage = await db.locationImage.findUnique({

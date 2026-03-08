@@ -81,7 +81,17 @@ export function useGenerateCharacterImage() {
   const invalidateCharacters = () => invalidateGlobalCharacters(queryClient)
 
   return useMutation({
-    mutationFn: async ({ characterId, appearanceIndex }: { characterId: string; appearanceIndex: number }) => {
+    mutationFn: async ({
+      characterId,
+      appearanceIndex,
+      artStyle,
+      count,
+    }: {
+      characterId: string
+      appearanceIndex: number
+      artStyle?: string
+      count?: number
+    }) => {
       return await requestJsonWithError('/api/asset-hub/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -89,6 +99,8 @@ export function useGenerateCharacterImage() {
           type: 'character',
           id: characterId,
           appearanceIndex,
+          artStyle,
+          count,
         }),
       }, 'Failed to generate image')
     },

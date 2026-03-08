@@ -71,6 +71,8 @@ const graphExecutorMock = vi.hoisted(() => ({
 
 const parseVoiceLinesJsonMock = vi.hoisted(() => vi.fn())
 const persistStoryboardsAndPanelsMock = vi.hoisted(() => vi.fn())
+const parseStoryboardRetryTargetMock = vi.hoisted(() => vi.fn())
+const runScriptToStoryboardAtomicRetryMock = vi.hoisted(() => vi.fn())
 
 const txState = vi.hoisted(() => ({
   createdRows: [] as Array<Record<string, unknown>>,
@@ -99,6 +101,11 @@ vi.mock('@/lib/llm-client', () => ({
 
 vi.mock('@/lib/config-service', () => ({
   resolveProjectModelCapabilityGenerationOptions: resolveProjectModelCapabilityGenerationOptionsMock,
+  getUserWorkflowConcurrencyConfig: vi.fn(async () => ({
+    analysis: 2,
+    image: 5,
+    video: 5,
+  })),
 }))
 
 vi.mock('@/lib/llm-observe/internal-stream-context', () => ({
@@ -180,6 +187,10 @@ vi.mock('@/lib/workers/handlers/script-to-storyboard-helpers', () => ({
     return n > 0 ? n : null
   },
 }))
+vi.mock('@/lib/workers/handlers/script-to-storyboard-atomic-retry', () => ({
+  parseStoryboardRetryTarget: parseStoryboardRetryTargetMock,
+  runScriptToStoryboardAtomicRetry: runScriptToStoryboardAtomicRetryMock,
+}))
 
 import { handleScriptToStoryboardTask } from '@/lib/workers/handlers/script-to-storyboard'
 
@@ -230,6 +241,8 @@ describe('worker script-to-storyboard behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     txState.createdRows = []
+    parseStoryboardRetryTargetMock.mockReturnValue(null)
+    runScriptToStoryboardAtomicRetryMock.mockReset()
 
     prismaMock.project.findUnique.mockResolvedValue({
       id: 'project-1',
@@ -334,12 +347,14 @@ describe('worker script-to-storyboard behavior', () => {
     expect(chatCompletionMock).toHaveBeenCalledTimes(2)
     expect(parseVoiceLinesJsonMock).toHaveBeenCalledTimes(2)
     expect(withInternalLLMStreamCallbacksMock).toHaveBeenCalledTimes(3)
-    expect(chatCompletionMock.mock.calls[0]?.[3]).toEqual(expect.objectContaining({
+    const firstChatCall = chatCompletionMock.mock.calls[0] as unknown as [unknown, unknown, unknown, Record<string, unknown>] | undefined
+    expect(firstChatCall?.[3]).toEqual(expect.objectContaining({
       action: 'voice_analyze',
       streamStepId: 'voice_analyze',
       streamStepAttempt: 1,
     }))
-    expect(chatCompletionMock.mock.calls[1]?.[3]).toEqual(expect.objectContaining({
+    const secondChatCall = chatCompletionMock.mock.calls[1] as unknown as [unknown, unknown, unknown, Record<string, unknown>] | undefined
+    expect(secondChatCall?.[3]).toEqual(expect.objectContaining({
       action: 'voice_analyze',
       streamStepId: 'voice_analyze',
       streamStepAttempt: 2,
@@ -354,5 +369,75 @@ describe('worker script-to-storyboard behavior', () => {
         message: '台词分析失败，准备重试 (2/2)',
       }),
     )
+  })
+
+  it('phase 级重试: 仅执行原子 phase，不走整图重跑', async () => {
+    parseStoryboardRetryTargetMock.mockReturnValue({
+      stepKey: 'clip_clip-1_phase3_detail',
+      clipId: 'clip-1',
+      phase: 'phase3_detail',
+    })
+    runScriptToStoryboardAtomicRetryMock.mockResolvedValue({
+      clipPanels: [
+        {
+          clipId: 'clip-1',
+          clipIndex: 1,
+          finalPanels: [
+            {
+              panel_number: 1,
+              description: 'phase3 retry panel',
+              location: 'Office',
+            },
+          ],
+        },
+      ],
+      phase1PanelsByClipId: {},
+      phase2CinematographyByClipId: {},
+      phase2ActingByClipId: {},
+      phase3PanelsByClipId: {
+        'clip-1': [
+          {
+            panel_number: 1,
+            description: 'phase3 retry panel',
+            location: 'Office',
+          },
+        ],
+      },
+      totalPanelCount: 1,
+      totalStepCount: 6,
+    })
+
+    const job = buildJob({
+      episodeId: 'episode-1',
+      retryStepKey: 'clip_clip-1_phase3_detail',
+      retryStepAttempt: 2,
+    })
+    const result = await handleScriptToStoryboardTask(job)
+
+    expect(result).toEqual({
+      episodeId: 'episode-1',
+      storyboardCount: 1,
+      panelCount: 1,
+      voiceLineCount: 0,
+      retryStepKey: 'clip_clip-1_phase3_detail',
+    })
+    expect(runScriptToStoryboardAtomicRetryMock).toHaveBeenCalledTimes(1)
+    expect(runScriptToStoryboardOrchestratorMock).not.toHaveBeenCalled()
+    expect(persistStoryboardsAndPanelsMock).toHaveBeenCalledWith({
+      episodeId: 'episode-1',
+      clipPanels: [
+        {
+          clipId: 'clip-1',
+          clipIndex: 1,
+          finalPanels: [
+            {
+              panel_number: 1,
+              description: 'phase3 retry panel',
+              location: 'Office',
+            },
+          ],
+        },
+      ],
+    })
   })
 })

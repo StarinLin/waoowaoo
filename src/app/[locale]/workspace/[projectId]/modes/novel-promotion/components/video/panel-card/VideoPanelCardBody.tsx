@@ -1,3 +1,4 @@
+import React from 'react'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { ModelCapabilityDropdown } from '@/components/ui/config-modals/ModelCapabilityDropdown'
@@ -43,7 +44,12 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
     const unitText = safeTranslate(field.unitKey)
     return unitText ? `${labelText} (${unitText})` : labelText
   }
+
   const isFirstLastFrameGenerated = panel.videoGenerationMode === 'firstlastframe' && !!panel.videoUrl
+  const showsIncomingLinkBadge = layout.isLastFrame && !!layout.prevPanel
+  const showsOutgoingLinkBadge = layout.isLinked && !!layout.nextPanel
+  const showsPromptEditor = !layout.isLastFrame || layout.isLinked
+  const showsFirstLastFrameActions = layout.isLinked && !!layout.nextPanel
 
   return (
     <div className="p-4 space-y-2">
@@ -55,24 +61,29 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
       <p className="text-sm text-[var(--glass-text-secondary)] line-clamp-2">{panel.textPanel?.description}</p>
 
       <div className="mt-3 pt-3 border-t border-[var(--glass-stroke-base)]">
-        {layout.isLastFrame && layout.prevPanel && !layout.isLinked ? (
-          // 右帧：未链接时，仅显示"作为X的尾帧"占位提示（系统风格标签）
+        {(showsIncomingLinkBadge || showsOutgoingLinkBadge) && (
           <div className="mb-2 flex flex-wrap gap-1.5">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--glass-bg-muted)] text-[var(--glass-text-tertiary)] border border-[var(--glass-stroke-base)]">
-              <AppIcon name="unplug" className="w-3 h-3" /> {t('firstLastFrame.asLastFrameFor', { number: panelIndex })}
-            </span>
+            {showsIncomingLinkBadge && (
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${showsOutgoingLinkBadge
+                    ? 'bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
+                    : 'bg-[var(--glass-bg-muted)] text-[var(--glass-text-tertiary)] border border-[var(--glass-stroke-base)]'
+                  }`}
+              >
+                <AppIcon name={showsOutgoingLinkBadge ? 'link' : 'unplug'} className="w-3 h-3" />
+                {t('firstLastFrame.asLastFrameFor', { number: panelIndex })}
+              </span>
+            )}
+            {showsOutgoingLinkBadge && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]">
+                <AppIcon name="link" className="w-3 h-3" />
+                {t('firstLastFrame.asFirstFrameFor', { number: panelIndex + 2 })}
+              </span>
+            )}
           </div>
-        ) : layout.isLastFrame && layout.prevPanel && layout.isLinked ? (
-          // 右帧：已链接时，显示尾帧+首帧双标签（info 色系，与系统一致）
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]">
-              <AppIcon name="link" className="w-3 h-3" /> {t('firstLastFrame.asLastFrameFor', { number: panelIndex })}
-            </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]">
-              <AppIcon name="link" className="w-3 h-3" /> {t('firstLastFrame.asFirstFrameFor', { number: panelIndex + 2 })}
-            </span>
-          </div>
-        ) : (
+        )}
+
+        {showsPromptEditor && (
           <>
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-medium text-[var(--glass-text-tertiary)]">{t('promptModal.promptLabel')}</span>
@@ -104,8 +115,8 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
               </div>
             )}
 
-            {layout.isLinked && layout.nextPanel ? (() => {
-              const linkedNextPanel = layout.nextPanel
+            {showsFirstLastFrameActions ? (() => {
+              const linkedNextPanel = layout.nextPanel!
               return (
                 <div className="mt-2 flex items-center gap-2">
                   <button

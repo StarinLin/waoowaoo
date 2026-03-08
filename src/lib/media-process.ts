@@ -1,4 +1,4 @@
-import { downloadAndUploadVideoToCOS, generateUniqueKey, toFetchableUrl, uploadToCOS } from '@/lib/cos'
+import { downloadAndUploadVideo, generateUniqueKey, toFetchableUrl, uploadObject } from '@/lib/storage'
 
 export interface ProcessMediaOptions {
   source: string | Buffer
@@ -22,17 +22,17 @@ export async function processMediaResult(options: ProcessMediaOptions): Promise<
       if (base64Start === -1) throw new Error('无法解析 data: URL')
       const base64Data = source.substring(base64Start + 8)
       const buffer = Buffer.from(base64Data, 'base64') as Buffer
-      return await uploadToCOS(buffer, key)
+      return await uploadObject(buffer, key)
     }
 
     if (type === 'video') {
-      return await downloadAndUploadVideoToCOS(source, key, 3, downloadHeaders)
+      return await downloadAndUploadVideo(source, key, 3, downloadHeaders)
     }
 
     const response = await fetch(toFetchableUrl(source))
     const buffer = Buffer.from(await response.arrayBuffer()) as Buffer
-    return await uploadToCOS(buffer, key)
+    return await uploadObject(buffer, key)
   }
 
-  return await uploadToCOS(source, key)
+  return await uploadObject(source, key)
 }

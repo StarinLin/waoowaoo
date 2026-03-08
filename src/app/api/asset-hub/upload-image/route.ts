@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { uploadToCOS, generateUniqueKey } from '@/lib/cos'
+import { uploadObject, generateUniqueKey } from '@/lib/storage'
 import sharp from 'sharp'
 import { initializeFonts, createLabelSVG } from '@/lib/fonts'
 import { decodeImageUrlsFromDb, encodeImageUrls } from '@/lib/contracts/image-urls-contract'
@@ -88,7 +88,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
         ? `global-char-${id}-${appearanceIndex}-upload`
         : `global-loc-${id}-upload`
     const key = generateUniqueKey(keyPrefix, 'jpg')
-    await uploadToCOS(processed, key)
+    await uploadObject(processed, key)
 
     if (type === 'character' && appearanceIndex !== null) {
         const appearance = await db.globalCharacterAppearance.findFirst({

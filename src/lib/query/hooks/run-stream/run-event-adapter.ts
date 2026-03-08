@@ -1,4 +1,5 @@
 import type { RunStreamEvent } from '@/lib/novel-promotion/run-stream/types'
+import { apiFetch } from '@/lib/api-fetch'
 
 type JsonRecord = Record<string, unknown>
 
@@ -19,6 +20,24 @@ function toObject(value: unknown): JsonRecord {
 
 function readText(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const rows: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const trimmed = item.trim()
+    if (!trimmed) continue
+    rows.push(trimmed)
+  }
+  return rows
+}
+
+function readBool(value: unknown): boolean | undefined {
+  if (value === true) return true
+  if (value === false) return false
+  return undefined
 }
 
 function resolveErrorMessage(payload: JsonRecord, fallback: string): string {
@@ -79,6 +98,12 @@ export function toRunStreamEventFromRunApi(params: {
       : undefined
   const ts = readText(params.event.createdAt) || new Date().toISOString()
   const message = readText(payload.message) || undefined
+  const dependsOn = readStringArray(payload.dependsOn)
+  const blockedBy = readStringArray(payload.blockedBy)
+  const groupId = readText(payload.groupId) || undefined
+  const parallelKey = readText(payload.parallelKey) || undefined
+  const retryable = readBool(payload.retryable)
+  const stale = readBool(payload.stale)
 
   if (params.event.eventType === 'run.start') {
     return {
@@ -136,6 +161,11 @@ export function toRunStreamEventFromRunApi(params: {
       stepTitle,
       stepIndex,
       stepTotal,
+      dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
+      blockedBy: blockedBy.length > 0 ? blockedBy : undefined,
+      groupId,
+      parallelKey,
+      retryable,
       message,
     }
   }
@@ -164,6 +194,11 @@ export function toRunStreamEventFromRunApi(params: {
       stepTitle,
       stepIndex,
       stepTotal,
+      dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
+      blockedBy: blockedBy.length > 0 ? blockedBy : undefined,
+      groupId,
+      parallelKey,
+      retryable,
       lane,
       seq: laneSeq,
       textDelta: lane === 'text' ? delta : undefined,
@@ -180,12 +215,17 @@ export function toRunStreamEventFromRunApi(params: {
       runId: params.runId,
       event: 'step.complete',
       ts,
-      status: 'completed',
       stepId,
       stepAttempt,
       stepTitle,
       stepIndex,
       stepTotal,
+      status: stale ? 'stale' : 'completed',
+      dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
+      blockedBy: blockedBy.length > 0 ? blockedBy : undefined,
+      groupId,
+      parallelKey,
+      retryable,
       text,
       reasoning,
       message,
@@ -204,6 +244,11 @@ export function toRunStreamEventFromRunApi(params: {
       stepTitle,
       stepIndex,
       stepTotal,
+      dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
+      blockedBy: blockedBy.length > 0 ? blockedBy : undefined,
+      groupId,
+      parallelKey,
+      retryable,
       message: resolveErrorMessage(payload, 'step failed'),
       payload,
     }
@@ -224,14 +269,26 @@ export async function fetchRunEventsPage(params: {
     ? Math.min(Math.max(Math.floor(params.limit || 500), 1), 2000)
     : 500
 
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/runs/${params.runId}/events?afterSeq=${safeAfterSeq}&limit=${safeLimit}`,
     {
       method: 'GET',
       cache: 'no-store',
     },
   )
-  if (!response.ok) return []
+  if (!response.ok) {
+    const errorJson = await response.clone().json().catch(() => null)
+    const errorRoot = toObject(errorJson)
+    const errorMessage =
+      readText(toObject(errorRoot.error).message) ||
+      readText(errorRoot.message) ||
+      (await response.text().catch(() => ''))
+
+    if (errorMessage) {
+      throw new Error(`run events fetch failed (HTTP ${response.status}): ${errorMessage}`)
+    }
+    throw new Error(`run events fetch failed (HTTP ${response.status})`)
+  }
 
   const payload = await response.json().catch(() => null)
   return parseRunApiEventsPayload(payload)

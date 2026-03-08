@@ -270,6 +270,7 @@ export async function requireProjectAuth<T extends ProjectAuthIncludes = Project
         storyboardModel?: string | null
         editModel?: string | null
         videoModel?: string | null
+        audioModel?: string | null
         [key: string]: unknown
     }
     const processedNovelData = {
@@ -280,6 +281,7 @@ export async function requireProjectAuth<T extends ProjectAuthIncludes = Project
         storyboardModel: extractModelKey(rawNovelData.storyboardModel),
         editModel: extractModelKey(rawNovelData.editModel),
         videoModel: extractModelKey(rawNovelData.videoModel),
+        audioModel: extractModelKey(rawNovelData.audioModel),
     }
 
     return {

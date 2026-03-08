@@ -19,9 +19,12 @@ import {
 } from './image-task-handler-shared'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
-import { executeAiVisionStep } from '@/lib/ai-runtime'
-import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { createScopedLogger } from '@/lib/logging/core'
+import {
+  buildCharacterDescriptionFields,
+  generateModifiedAssetDescription,
+  readIndexedDescription,
+} from './modify-description-sync'
 
 const logger = createScopedLogger({ module: 'worker.asset-hub-modify' })
 
@@ -29,9 +32,13 @@ interface GlobalCharacterAppearanceRecord {
   id: string
   appearanceIndex: number
   changeReason: string | null
+  description: string | null
+  descriptions: string | null
   imageUrl: string | null
   imageUrls: string | null
   selectedIndex: number | null
+  previousDescription: string | null
+  previousDescriptions: string | null
 }
 
 interface GlobalCharacterRecord {
@@ -43,7 +50,9 @@ interface GlobalCharacterRecord {
 interface GlobalLocationImageRecord {
   id: string
   imageIndex: number
+  description: string | null
   imageUrl: string | null
+  previousDescription: string | null
 }
 
 interface GlobalLocationRecord {
@@ -67,6 +76,10 @@ interface AssetHubModifyDb {
   }
 }
 
+function readModifyInstruction(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
   const userId = job.data.userId
@@ -75,11 +88,11 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
   const editModel = userModels.editModel
   if (!editModel) throw new Error('User edit model not configured')
 
-  // 从 payload.generationOptions 读取 resolution（由 route 层 buildImageBillingPayloadFromUserConfig 注入）
   const generationOptions = payload.generationOptions as Record<string, unknown> | undefined
   const resolution = typeof generationOptions?.resolution === 'string'
     ? generationOptions.resolution
     : undefined
+  const modifyInstruction = readModifyInstruction(payload.modifyPrompt)
 
   if (payload.type === 'character') {
     const character = await db.globalCharacter.findFirst({
@@ -109,8 +122,13 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
     const requiredReference = await stripLabelBar(currentUrl)
     const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
     const referenceImages = Array.from(new Set([requiredReference, ...normalizedExtras]))
+    const currentDescription = readIndexedDescription({
+      descriptions: appearance.descriptions,
+      fallbackDescription: appearance.description,
+      index: targetImageIndex,
+    })
 
-    const prompt = `请根据以下指令修改图片，保持人物核心特征一致：\n${payload.modifyPrompt || ''}`
+    const prompt = `请根据以下指令修改图片，保持人物核心特征一致：\n${modifyInstruction}`
     const source = await resolveImageSourceFromGeneration(job, {
       userId,
       modelId: editModel,
@@ -132,23 +150,26 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
     const selectedIndex = appearance.selectedIndex
     const shouldUpdateMain = selectedIndex === targetImageIndex || selectedIndex === null || imageUrls.length === 1
 
-    // 如果有参考图，尝试用 AI 分析参考图更新描述词（静默完成，不影响改图主流程）
-    let extractedDescription: string | undefined
-    if (normalizedExtras.length > 0) {
+    let descriptionFields: { description: string; descriptions: string } | null = null
+    if (currentDescription && modifyInstruction && userModels.analysisModel) {
       try {
-        const analysisModel = userModels.analysisModel
-        if (analysisModel) {
-          const completion = await executeAiVisionStep({
-            userId,
-            model: analysisModel,
-            prompt: buildPrompt({ promptId: PROMPT_IDS.CHARACTER_IMAGE_TO_DESCRIPTION, locale: job.data.locale }),
-            imageUrls: normalizedExtras,
-            temperature: 0.3,
-          })
-          extractedDescription = completion.text || undefined
-        }
+        const nextDescription = await generateModifiedAssetDescription({
+          userId,
+          model: userModels.analysisModel,
+          locale: job.data.locale,
+          type: 'character',
+          currentDescription,
+          modifyInstruction,
+          referenceImages: normalizedExtras,
+        })
+        descriptionFields = buildCharacterDescriptionFields({
+          descriptions: appearance.descriptions,
+          fallbackDescription: appearance.description,
+          index: targetImageIndex,
+          nextDescription,
+        })
       } catch (err) {
-        logger.warn({ message: '资产库参考图描述提取失败', details: { error: String(err) } })
+        logger.warn({ message: '资产库角色描述同步失败', details: { error: String(err) } })
       }
     }
 
@@ -158,9 +179,11 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
       data: {
         previousImageUrl: appearance.imageUrl || null,
         previousImageUrls: appearance.imageUrls,
+        previousDescription: appearance.description || null,
+        previousDescriptions: appearance.descriptions ?? null,
         imageUrls: encodeImageUrls(imageUrls),
         imageUrl: shouldUpdateMain ? cosKey : appearance.imageUrl,
-        ...(extractedDescription ? { description: extractedDescription } : {}),
+        ...(descriptionFields || {}),
       },
     })
 
@@ -193,7 +216,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
     const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
     const referenceImages = Array.from(new Set([requiredReference, ...normalizedExtras]))
 
-    const prompt = `请根据以下指令修改场景图片，保持整体风格一致：\n${payload.modifyPrompt || ''}`
+    const prompt = `请根据以下指令修改场景图片，保持整体风格一致：\n${modifyInstruction}`
     const source = await resolveImageSourceFromGeneration(job, {
       userId,
       modelId: editModel,
@@ -208,12 +231,32 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
     const labeled = await withLabelBar(source, location.name)
     const cosKey = await uploadImageSourceToCos(labeled, 'global-location-modify', locationImage.id)
 
+    let extractedDescription: string | undefined
+    if (locationImage.description && modifyInstruction && userModels.analysisModel) {
+      try {
+        extractedDescription = await generateModifiedAssetDescription({
+          userId,
+          model: userModels.analysisModel,
+          locale: job.data.locale,
+          type: 'location',
+          currentDescription: locationImage.description,
+          modifyInstruction,
+          referenceImages: normalizedExtras,
+          locationName: location.name,
+        })
+      } catch (err) {
+        logger.warn({ message: '资产库场景描述同步失败', details: { error: String(err) } })
+      }
+    }
+
     await assertTaskActive(job, 'persist_global_location_modify')
     await db.globalLocationImage.update({
       where: { id: locationImage.id },
       data: {
         previousImageUrl: locationImage.imageUrl,
+        previousDescription: locationImage.description || null,
         imageUrl: cosKey,
+        ...(extractedDescription ? { description: extractedDescription } : {}),
       },
     })
 

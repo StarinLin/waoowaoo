@@ -11,6 +11,7 @@ type PanelRow = {
   videoPrompt: string | null
   description: string | null
   firstLastFramePrompt: string | null
+  duration: number | null
 }
 
 const workerState = vi.hoisted(() => ({
@@ -26,9 +27,21 @@ const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
   getProjectModels: vi.fn(async () => ({ videoRatio: '16:9' })),
   resolveLipSyncVideoSource: vi.fn(async () => 'https://provider.example/lipsync.mp4'),
-  resolveVideoSourceFromGeneration: vi.fn(async () => ({ url: 'https://provider.example/video.mp4' })),
+  resolveVideoSourceFromGeneration: vi.fn<(...args: unknown[]) => Promise<{ url: string; downloadHeaders?: Record<string, string> }>>(async () => ({ url: 'https://provider.example/video.mp4' })),
   toSignedUrlIfCos: vi.fn((url: string | null) => (url ? `https://signed.example/${url}` : null)),
   uploadVideoSourceToCos: vi.fn(async () => 'cos/lip-sync/video.mp4'),
+}))
+const configServiceMock = vi.hoisted(() => ({
+  getUserWorkflowConcurrencyConfig: vi.fn(async () => ({
+    analysis: 5,
+    image: 5,
+    video: 5,
+  })),
+}))
+const concurrencyGateMock = vi.hoisted(() => ({
+  withUserConcurrencyGate: vi.fn(async <T>(input: {
+    run: () => Promise<T>
+  }) => await input.run()),
 }))
 
 const prismaMock = vi.hoisted(() => ({
@@ -83,6 +96,8 @@ vi.mock('@/lib/model-config-contract', () => ({
 vi.mock('@/lib/api-config', () => ({
   getProviderConfig: vi.fn(async () => ({ apiKey: 'api-key' })),
 }))
+vi.mock('@/lib/config-service', () => configServiceMock)
+vi.mock('@/lib/workers/user-concurrency-gate', () => concurrencyGateMock)
 
 function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
   return {
@@ -92,6 +107,7 @@ function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
     videoPrompt: 'panel prompt',
     description: 'panel description',
     firstLastFramePrompt: null,
+    duration: 5,
     ...(overrides || {}),
   }
 }
@@ -127,6 +143,7 @@ describe('worker video processor behavior', () => {
     prismaMock.novelPromotionVoiceLine.findUnique.mockResolvedValue({
       id: 'line-1',
       audioUrl: 'cos/line-1.mp3',
+      audioDuration: 1200,
     })
 
     const mod = await import('@/lib/workers/video.worker')
@@ -218,6 +235,8 @@ describe('worker video processor behavior', () => {
       expect.objectContaining({
         userId: 'user-1',
         modelKey: 'fal::lipsync-model',
+        audioDurationMs: 1200,
+        videoDurationMs: 5000,
       }),
     )
 

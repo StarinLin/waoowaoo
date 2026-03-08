@@ -72,14 +72,22 @@ export function useGenerateLocationImage() {
   const invalidateLocations = () => invalidateGlobalLocations(queryClient)
 
   return useMutation({
-    mutationFn: async (locationId: string) => {
+    mutationFn: async ({
+      locationId,
+      artStyle,
+      count,
+    }: {
+      locationId: string
+      artStyle?: string
+      count?: number
+    }) => {
       return await requestJsonWithError('/api/asset-hub/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'location', id: locationId }),
+        body: JSON.stringify({ type: 'location', id: locationId, artStyle, count }),
       }, 'Failed to generate image')
     },
-    onMutate: (locationId) => {
+    onMutate: ({ locationId }) => {
       upsertTaskTargetOverlay(queryClient, {
         projectId: GLOBAL_ASSET_PROJECT_ID,
         targetType: 'GlobalLocation',
@@ -87,7 +95,7 @@ export function useGenerateLocationImage() {
         intent: 'generate',
       })
     },
-    onError: (_error, locationId) => {
+    onError: (_error, { locationId }) => {
       clearTaskTargetOverlay(queryClient, {
         projectId: GLOBAL_ASSET_PROJECT_ID,
         targetType: 'GlobalLocation',

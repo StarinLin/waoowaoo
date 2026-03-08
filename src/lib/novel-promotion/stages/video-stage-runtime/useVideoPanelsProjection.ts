@@ -9,7 +9,7 @@ import type {
 
 interface TaskStateLike {
   phase?: string | null
-  lastError?: { message?: string } | null
+  lastError?: { code?: string; message?: string } | null
 }
 
 interface TaskPresentationLike {
@@ -79,6 +79,10 @@ export function useVideoPanelsProjection({
           videoUrl: panel.videoUrl || undefined,
           videoGenerationMode: panel.videoGenerationMode || undefined,
           videoTaskRunning: panelVideoState?.phase === 'queued' || panelVideoState?.phase === 'processing',
+          videoErrorCode:
+            panelVideoState?.phase === 'failed'
+              ? panelVideoState.lastError?.code || panel.videoErrorCode || undefined
+              : panel.videoErrorCode || undefined,
           videoErrorMessage:
             panelVideoState?.phase === 'failed'
               ? panelVideoState.lastError?.message || panel.videoErrorMessage || undefined
@@ -87,6 +91,10 @@ export function useVideoPanelsProjection({
           linkedToNextPanel: panel.linkedToNextPanel || false,
           lipSyncVideoUrl: panel.lipSyncVideoUrl || undefined,
           lipSyncTaskRunning: panelLipState?.phase === 'queued' || panelLipState?.phase === 'processing',
+          lipSyncErrorCode:
+            panelLipState?.phase === 'failed'
+              ? panelLipState.lastError?.code || panel.lipSyncErrorCode || undefined
+              : panel.lipSyncErrorCode || undefined,
           lipSyncErrorMessage:
             panelLipState?.phase === 'failed'
               ? panelLipState.lastError?.message || panel.lipSyncErrorMessage || undefined

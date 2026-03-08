@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { NextResponse } from 'next/server'
 import { TASK_TYPE, type TaskType } from '@/lib/task/types'
 import { buildMockRequest } from '../../../helpers/request'
 
@@ -26,10 +27,14 @@ const authState = vi.hoisted<AuthState>(() => ({
 }))
 
 const maybeSubmitLLMTaskMock = vi.hoisted(() =>
-  vi.fn(async () => new Response(
-    JSON.stringify({ taskId: 'task-1', async: true }),
-    { status: 200, headers: { 'content-type': 'application/json' } },
-  )),
+  vi.fn<typeof import('@/lib/llm-observe/route-task').maybeSubmitLLMTask>(async () => NextResponse.json({
+    success: true,
+    async: true,
+    taskId: 'task-1',
+    runId: null,
+    status: 'queued',
+    deduped: false,
+  })),
 )
 
 const configServiceMock = vi.hoisted(() => ({
@@ -319,9 +324,13 @@ describe('api contract - llm observe routes (behavior)', () => {
     authState.authenticated = true
     authState.projectMode = 'novel-promotion'
     maybeSubmitLLMTaskMock.mockResolvedValue(
-      new Response(JSON.stringify({ taskId: 'task-1', async: true }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
+      NextResponse.json({
+        success: true,
+        async: true,
+        taskId: 'task-1',
+        runId: null,
+        status: 'queued',
+        deduped: false,
       }),
     )
   })

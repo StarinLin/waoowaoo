@@ -35,6 +35,7 @@ import {
   FolderHeart,
   FolderOpen,
   Globe,
+  GripVertical,
   Image,
   ImagePlus,
   Info,
@@ -65,6 +66,7 @@ import {
   Upload,
   UserRound,
   UserRoundCog,
+  UsersRound,
   Video,
   VolumeX,
   WandSparkles,
@@ -135,6 +137,7 @@ export const iconRegistry = {
   copy: Copy,
   user: UserRound,
   userAlt: UserRound,
+  usersRound: UsersRound,
   userCircle: CircleUser,
   package: Box,
   cube: Box,
@@ -182,6 +185,7 @@ export const iconRegistry = {
   cpu: Cpu,
   film: Film,
   folderOpen: FolderOpen,
+  gripVertical: GripVertical,
 } as const satisfies Record<string, LucideIcon>
 
 export type AppIconName = keyof typeof iconRegistry

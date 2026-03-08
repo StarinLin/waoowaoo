@@ -5,6 +5,8 @@ import { useTranslations } from 'next-intl'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import type { TaskPresentationState } from '@/lib/task/presentation'
 import { AppIcon } from '@/components/ui/icons'
+import ImageGenerationInlineCountButton from '@/components/image-generation/ImageGenerationInlineCountButton'
+import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
 
 type CharacterCardActionsProps =
   | {
@@ -24,7 +26,9 @@ type CharacterCardActionsProps =
     isAppearanceTaskRunning: boolean
     isAnyTaskRunning: boolean
     hasDescription: boolean
-    onGenerate: () => void
+    generationCount: number
+    onGenerationCountChange: (value: number) => void
+    onGenerate: (count?: number) => void
     voiceSettings: ReactNode
   }
 
@@ -64,8 +68,6 @@ export default function CharacterCardActions(props: CharacterCardActionsProps) {
 
   return (
     <>
-      {props.isPrimaryAppearance && props.voiceSettings}
-
       {!props.isPrimaryAppearance && !props.primaryAppearanceSelected ? (
         <div className="w-full py-2 text-xs text-center text-[var(--glass-text-tertiary)] bg-[var(--glass-bg-muted)] rounded border border-dashed border-[var(--glass-stroke-strong)]">
           <div className="flex items-center justify-center gap-1">
@@ -75,16 +77,22 @@ export default function CharacterCardActions(props: CharacterCardActionsProps) {
         </div>
       ) : (
         !props.currentImageUrl && !props.isAppearanceTaskRunning && !props.isAnyTaskRunning && (
-          <button
-            type="button"
-            onClick={props.onGenerate}
+          <ImageGenerationInlineCountButton
+            prefix={<span>{props.isPrimaryAppearance ? t('image.generateCountPrefix') : t('character.generateFromPrimary')}</span>}
+            suffix={<span>{t('image.generateCountSuffix')}</span>}
+            value={props.generationCount}
+            options={getImageGenerationCountOptions('character')}
+            onValueChange={props.onGenerationCountChange}
+            onClick={() => props.onGenerate(props.generationCount)}
             disabled={!props.hasDescription}
-            className={`glass-btn-base w-full py-1 text-xs disabled:opacity-50 ${props.isPrimaryAppearance ? 'glass-btn-primary' : 'glass-btn-tone-info'}`}
-          >
-            {props.isPrimaryAppearance ? t('common.generate') : t('character.generateFromPrimary')}
-          </button>
+            ariaLabel={t('image.selectCount')}
+            className={`glass-btn-base flex w-full items-center justify-center gap-1 py-1 text-xs disabled:opacity-50 ${props.isPrimaryAppearance ? 'glass-btn-primary' : 'glass-btn-tone-info'}`}
+            selectClassName="appearance-none bg-transparent border-0 pl-0 pr-3 text-xs font-semibold text-current outline-none cursor-pointer leading-none transition-colors"
+          />
         )
       )}
+
+      {props.isPrimaryAppearance && props.voiceSettings}
     </>
   )
 }

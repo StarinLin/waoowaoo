@@ -8,7 +8,7 @@ import {
 } from './outbound-image'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 
-vi.mock('@/lib/cos', () => ({
+vi.mock('@/lib/storage', () => ({
   getSignedUrl: vi.fn((key: string) => `/signed/${key}`),
   toFetchableUrl: vi.fn((value: string) => (
     value.startsWith('/') ? `http://localhost:3000${value}` : value

@@ -1,6 +1,10 @@
 import type OpenAI from 'openai'
-import { chatCompletion, chatCompletionWithVision, getCompletionContent } from '@/lib/llm-client'
+import { getCompletionContent } from '@/lib/llm-client'
 import { getCompletionParts } from '@/lib/llm/completion-parts'
+import {
+  runModelGatewayTextCompletion,
+  runModelGatewayVisionCompletion,
+} from '@/lib/model-gateway/llm'
 import { toAiRuntimeError } from './errors'
 import type {
   AiStepExecutionInput,
@@ -44,11 +48,11 @@ function extractTextAndReasoning(completion: OpenAI.Chat.Completions.ChatComplet
 
 export async function executeAiTextStep(input: AiStepExecutionInput): Promise<AiStepExecutionResult> {
   try {
-    const completion = await chatCompletion(
-      input.userId,
-      input.model,
-      input.messages,
-      {
+    const completion = await runModelGatewayTextCompletion({
+      userId: input.userId,
+      model: input.model,
+      messages: input.messages,
+      options: {
         temperature: input.temperature,
         reasoning: input.reasoning,
         reasoningEffort: input.reasoningEffort,
@@ -60,7 +64,7 @@ export async function executeAiTextStep(input: AiStepExecutionInput): Promise<Ai
         streamStepIndex: input.meta.stepIndex,
         streamStepTotal: input.meta.stepTotal,
       },
-    )
+    })
 
     const parts = extractTextAndReasoning(completion)
     return {
@@ -76,12 +80,12 @@ export async function executeAiTextStep(input: AiStepExecutionInput): Promise<Ai
 
 export async function executeAiVisionStep(input: AiVisionStepExecutionInput): Promise<AiVisionStepExecutionResult> {
   try {
-    const completion = await chatCompletionWithVision(
-      input.userId,
-      input.model,
-      input.prompt,
-      input.imageUrls,
-      {
+    const completion = await runModelGatewayVisionCompletion({
+      userId: input.userId,
+      model: input.model,
+      prompt: input.prompt,
+      imageUrls: input.imageUrls,
+      options: {
         temperature: input.temperature,
         reasoning: input.reasoning,
         reasoningEffort: input.reasoningEffort,
@@ -93,7 +97,7 @@ export async function executeAiVisionStep(input: AiVisionStepExecutionInput): Pr
         streamStepIndex: input.meta?.stepIndex,
         streamStepTotal: input.meta?.stepTotal,
       },
-    )
+    })
 
     const parts = extractTextAndReasoning(completion)
     return {

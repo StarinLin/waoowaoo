@@ -2,6 +2,7 @@
 
 import { useRunStreamState, type RunResult } from './useRunStreamState'
 import { TASK_TYPE } from '@/lib/task/types'
+import { apiFetch } from '@/lib/api-fetch'
 
 export type ScriptToStoryboardRunParams = {
   episodeId: string
@@ -38,7 +39,7 @@ export function useScriptToStoryboardRunStream({ projectId, episodeId }: UseScri
       search.append('status', 'running')
       search.append('status', 'canceling')
       search.set('_v', '2')
-      const response = await fetch(`/api/runs?${search.toString()}`, {
+      const response = await apiFetch(`/api/runs?${search.toString()}`, {
         method: 'GET',
         cache: 'no-store',
       })

@@ -28,3 +28,4 @@ Rules:
 3. Adapt to scene_type and story rhythm.
 4. Technical notes must be directly actionable by image/video generation.
 5. JSON only, no markdown.
+6. ⚠️ JSON SAFETY: All quotation marks in text (""''「」 etc.) MUST be converted to corner brackets「」in JSON string values. NEVER use raw ASCII double quotes " inside string values.

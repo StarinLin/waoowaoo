@@ -3,6 +3,7 @@
 import ProgressToast from '@/components/ProgressToast'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { AnimatedBackground } from '@/components/ui/SharedComponents'
+import { useTranslations } from 'next-intl'
 import { WorkspaceProvider } from './WorkspaceProvider'
 import WorkspaceRunStreamConsoles from './components/WorkspaceRunStreamConsoles'
 import WorkspaceStageContent from './components/WorkspaceStageContent'
@@ -15,6 +16,7 @@ import '@/styles/animations.css'
 
 function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
   const vm = useNovelPromotionWorkspaceController(props)
+  const tProgress = useTranslations('progress')
 
   const {
     project,
@@ -27,8 +29,49 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
     onEpisodeDelete,
   } = props
 
+  const storyToScriptStream = vm.execution.storyToScriptStream
+  const scriptToStoryboardStream = vm.execution.scriptToStoryboardStream
+  const storyToScriptActive =
+    storyToScriptStream.isRunning ||
+    storyToScriptStream.isRecoveredRunning ||
+    storyToScriptStream.status === 'running'
+  const scriptToStoryboardActive =
+    scriptToStoryboardStream.isRunning ||
+    scriptToStoryboardStream.isRecoveredRunning ||
+    scriptToStoryboardStream.status === 'running'
+
+  const showStoryToScriptMinBadge =
+    storyToScriptStream.isVisible &&
+    storyToScriptStream.stages.length > 0 &&
+    storyToScriptActive &&
+    vm.execution.storyToScriptConsoleMinimized
+
+  const showScriptToStoryboardMinBadge =
+    scriptToStoryboardStream.isVisible &&
+    scriptToStoryboardStream.stages.length > 0 &&
+    scriptToStoryboardActive &&
+    vm.execution.scriptToStoryboardConsoleMinimized
+
+  const runBadges: { id: string; label: string; onClick: () => void }[] = []
+
+  if (showStoryToScriptMinBadge) {
+    runBadges.push({
+      id: 'story-to-script',
+      label: tProgress('runConsole.storyToScriptRunning'),
+      onClick: () => vm.execution.setStoryToScriptConsoleMinimized(false),
+    })
+  }
+
+  if (showScriptToStoryboardMinBadge) {
+    runBadges.push({
+      id: 'script-to-storyboard',
+      label: tProgress('runConsole.scriptToStoryboardRunning'),
+      onClick: () => vm.execution.setScriptToStoryboardConsoleMinimized(false),
+    })
+  }
+
   if (!vm.project.projectData) {
-    return <div className="text-center text-[var(--glass-text-secondary)]">{vm.i18n.tc('loading')}</div>
+    return <div className="text-center text-(--glass-text-secondary)">{vm.i18n.tc('loading')}</div>
   }
 
   return (
@@ -49,6 +92,7 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
         storyboardModel={vm.project.storyboardModel}
         editModel={vm.project.editModel}
         videoModel={vm.project.videoModel}
+        audioModel={vm.project.audioModel}
         capabilityOverrides={vm.project.capabilityOverrides}
         videoRatio={vm.project.videoRatio}
         ttsRate={vm.project.ttsRate !== undefined && vm.project.ttsRate !== null ? String(vm.project.ttsRate) : undefined}
@@ -95,7 +139,12 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
         />
 
         {vm.execution.showCreatingToast && (
-          <ProgressToast show={true} message={vm.i18n.t('storyInput.creating')} step={vm.execution.transitionProgress.step || ''} />
+          <ProgressToast
+            show
+            message={vm.i18n.t('storyInput.creating')}
+            step={vm.execution.transitionProgress.step || ''}
+            runBadges={runBadges}
+          />
         )}
 
         <ConfirmDialog
@@ -116,6 +165,9 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
           scriptToStoryboardConsoleMinimized={vm.execution.scriptToStoryboardConsoleMinimized}
           onStoryToScriptMinimizedChange={vm.execution.setStoryToScriptConsoleMinimized}
           onScriptToStoryboardMinimizedChange={vm.execution.setScriptToStoryboardConsoleMinimized}
+          projectId={projectId}
+          episodeId={episodeId}
+          hideMinimizedBadges={vm.execution.showCreatingToast}
         />
       </div>
     </div>

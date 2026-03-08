@@ -1,7 +1,13 @@
+import { safeParseJsonArray, safeParseJsonObject } from '@/lib/json-repair'
 import { buildCharactersIntroduction } from '@/lib/constants'
 import { normalizeAnyError } from '@/lib/errors/normalize'
 import { createScopedLogger } from '@/lib/logging/core'
 import { createClipContentMatcher, type ClipMatchLevel } from './clip-matching'
+import { mapWithConcurrency } from '@/lib/async/map-with-concurrency'
+import {
+  DEFAULT_ANALYSIS_WORKFLOW_CONCURRENCY,
+  normalizeWorkflowConcurrencyValue,
+} from '@/lib/workflow-concurrency'
 
 export type StoryToScriptStepMeta = {
   stepId: string
@@ -9,6 +15,11 @@ export type StoryToScriptStepMeta = {
   stepTitle: string
   stepIndex: number
   stepTotal: number
+  dependsOn?: string[]
+  groupId?: string
+  parallelKey?: string
+  retryable?: boolean
+  blockedBy?: string[]
 }
 
 export type StoryToScriptStepOutput = {
@@ -44,6 +55,7 @@ export type StoryToScriptPromptTemplates = {
 }
 
 export type StoryToScriptOrchestratorInput = {
+  concurrency?: number
   content: string
   baseCharacters: string[]
   baseLocations: string[]
@@ -91,210 +103,12 @@ function applyTemplate(template: string, replacements: Record<string, string>) {
   return next
 }
 
-function parseJSONObject(responseText: string): Record<string, unknown> {
-  let cleaned = responseText.trim()
-  cleaned = cleaned
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/, '')
-    .replace(/\s*```$/g, '')
-    .trim()
-
-  const firstBrace = cleaned.indexOf('{')
-  const lastBrace = cleaned.lastIndexOf('}')
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.slice(firstBrace, lastBrace + 1)
-  }
-
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>
-  } catch { /* continue */ }
-
-  try {
-    return JSON.parse(escapeControlCharsInJsonStrings(cleaned)) as Record<string, unknown>
-  } catch { /* continue */ }
-
-  return JSON.parse(fixUnescapedQuotesInJson(cleaned)) as Record<string, unknown>
-}
-
 function parseClipArray(responseText: string): Record<string, unknown>[] {
-  let cleaned = responseText.trim()
-  cleaned = cleaned
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/, '')
-    .replace(/\s*```$/g, '')
-    .trim()
-
-  // Try parsing as array with progressive repair
-  const firstBracket = cleaned.indexOf('[')
-  const lastBracket = cleaned.lastIndexOf(']')
-  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-    const arrayStr = cleaned.slice(firstBracket, lastBracket + 1)
-    for (const repair of [identity, escapeControlCharsInJsonStrings, fixUnescapedQuotesInJson]) {
-      try {
-        const parsed = JSON.parse(repair(arrayStr))
-        if (Array.isArray(parsed)) {
-          return parsed.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
-        }
-      } catch { /* try next repair */ }
-    }
-  }
-
-  const obj = parseJSONObject(cleaned)
-  const clips = obj.clips
-  if (Array.isArray(clips)) {
-    return clips.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
-  }
-
-  throw new Error('Invalid clip JSON format')
-}
-
-function identity<T>(v: T): T { return v }
-
-function escapeControlCharsInJsonStrings(input: string): string {
-  let out = ''
-  let inString = false
-  let escaped = false
-
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i]
-    if (!inString) {
-      if (ch === '"') inString = true
-      out += ch
-      continue
-    }
-    if (escaped) {
-      out += ch
-      escaped = false
-      continue
-    }
-    if (ch === '\\') {
-      out += ch
-      escaped = true
-      continue
-    }
-    if (ch === '"') {
-      inString = false
-      out += ch
-      continue
-    }
-    if (ch === '\n') {
-      out += '\\n'
-      continue
-    }
-    if (ch === '\r') {
-      out += '\\r'
-      continue
-    }
-    if (ch === '\t') {
-      out += '\\t'
-      continue
-    }
-    const code = ch.charCodeAt(0)
-    if (code < 0x20) {
-      out += `\\u${code.toString(16).padStart(4, '0')}`
-      continue
-    }
-    out += ch
-  }
-
-  return out
-}
-
-/**
- * Attempt to fix unescaped double quotes inside JSON string values.
- *
- * The LLM sometimes converts Chinese curly quotes ("") to straight ASCII
- * double quotes (") inside a JSON string value without escaping them.
- * This produces invalid JSON such as:
- *   "text":"六耳嚣张地说，"弼马温，我是来取代你的""
- *                        ^ unescaped quote
- *
- * Strategy: walk char-by-char tracking JSON string boundaries.  When we
- * encounter a `"` that would *close* the current string but the character
- * after it is NOT a valid JSON structural char (`,`, `}`, `]`, `:`, or
- * whitespace), it is almost certainly a stray interior quote and we
- * replace it with the Chinese fullwidth left/right quote `"\u201D`.
- */
-function fixUnescapedQuotesInJson(input: string): string {
-  const structuralAfterString = new Set([',', '}', ']', ':', ' ', '\t', '\n', '\r'])
-  let out = ''
-  let inString = false
-  let escaped = false
-
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i]
-
-    if (!inString) {
-      if (ch === '"') inString = true
-      out += ch
-      continue
-    }
-
-    // Inside a JSON string
-    if (escaped) {
-      out += ch
-      escaped = false
-      continue
-    }
-    if (ch === '\\') {
-      out += ch
-      escaped = true
-      continue
-    }
-
-    if (ch === '"') {
-      // Is this the real closing quote, or a stray interior quote?
-      const next = input[i + 1]
-      if (next === undefined || structuralAfterString.has(next)) {
-        // Legitimate closing quote
-        inString = false
-        out += ch
-      } else {
-        // Stray interior quote – replace with Chinese quote
-        out += '\u201C'
-      }
-      continue
-    }
-
-    // Control character escaping (same as escapeControlCharsInJsonStrings)
-    if (ch === '\n') { out += '\\n'; continue }
-    if (ch === '\r') { out += '\\r'; continue }
-    if (ch === '\t') { out += '\\t'; continue }
-    const code = ch.charCodeAt(0)
-    if (code < 0x20) { out += `\\u${code.toString(16).padStart(4, '0')}`; continue }
-
-    out += ch
-  }
-
-  return out
+  return safeParseJsonArray(responseText, 'clips')
 }
 
 function parseScreenplayObject(responseText: string): Record<string, unknown> {
-  let cleaned = responseText.trim()
-  cleaned = cleaned
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/, '')
-    .replace(/\s*```$/g, '')
-    .trim()
-
-  const firstBrace = cleaned.indexOf('{')
-  const lastBrace = cleaned.lastIndexOf('}')
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.slice(firstBrace, lastBrace + 1)
-  }
-
-  // Level 1: direct parse
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>
-  } catch { /* continue */ }
-
-  // Level 2: escape control characters
-  try {
-    return JSON.parse(escapeControlCharsInJsonStrings(cleaned)) as Record<string, unknown>
-  } catch { /* continue */ }
-
-  // Level 3: fix unescaped interior double quotes + control chars
-  return JSON.parse(fixUnescapedQuotesInJson(cleaned)) as Record<string, unknown>
+  return safeParseJsonObject(responseText)
 }
 
 function asString(value: unknown): string {
@@ -343,6 +157,19 @@ function computeRetryDelayMs(attempt: number) {
   return base + jitter
 }
 
+function isRecoverableJsonParseError(error: unknown, normalizedMessage: string): boolean {
+  if (normalizedMessage.includes('ark responses 调用失败')) return false
+  if (normalizedMessage.includes('invalidparameter')) return false
+  if (normalizedMessage.includes('unknown field')) return false
+
+  if (error instanceof SyntaxError) return true
+
+  return normalizedMessage.includes('unexpected token')
+    || normalizedMessage.includes('unexpected end of json input')
+    || normalizedMessage.includes('json format invalid')
+    || normalizedMessage.includes('invalid clip json format')
+}
+
 async function runStepWithRetry<T>(
   runStep: StoryToScriptOrchestratorInput['runStep'],
   baseMeta: StoryToScriptStepMeta,
@@ -372,8 +199,7 @@ async function runStepWithRetry<T>(
       const shouldRetry = attempt < MAX_STEP_ATTEMPTS
         && (
           normalizedError.retryable
-          || lowerMessage.includes('json')
-          || lowerMessage.includes('parse')
+          || isRecoverableJsonParseError(error, lowerMessage)
         )
 
       orchestratorLogger.error({
@@ -407,6 +233,7 @@ export async function runStoryToScriptOrchestrator(
   input: StoryToScriptOrchestratorInput,
 ): Promise<StoryToScriptOrchestratorResult> {
   const {
+    concurrency: rawConcurrency,
     content,
     baseCharacters,
     baseLocations,
@@ -416,6 +243,10 @@ export async function runStoryToScriptOrchestrator(
     onStepError,
     onLog,
   } = input
+  const concurrency = normalizeWorkflowConcurrencyValue(
+    rawConcurrency,
+    DEFAULT_ANALYSIS_WORKFLOW_CONCURRENCY,
+  )
 
   const baseCharactersText = baseCharacters.length > 0 ? baseCharacters.join('、') : '无'
   const baseLocationsText = baseLocations.length > 0 ? baseLocations.join('、') : '无'
@@ -434,27 +265,46 @@ export async function runStoryToScriptOrchestrator(
   })
 
   onLog?.('开始步骤1：角色/场景分析（并行）')
-  const [
-    { output: characterStep, parsed: charactersObject },
-    { output: locationStep, parsed: locationsObject },
-  ] = await Promise.all([
-    runStepWithRetry(
-      runStep,
-      { stepId: 'analyze_characters', stepTitle: 'progress.streamStep.analyzeCharacters', stepIndex: 1, stepTotal: 2 },
-      characterPrompt,
-      'analyze_characters',
-      2200,
-      parseJSONObject,
-    ),
-    runStepWithRetry(
-      runStep,
-      { stepId: 'analyze_locations', stepTitle: 'progress.streamStep.analyzeLocations', stepIndex: 2, stepTotal: 2 },
-      locationPrompt,
-      'analyze_locations',
-      2200,
-      parseJSONObject,
-    ),
-  ])
+  const analysisResults = await mapWithConcurrency(
+    [
+      () => runStepWithRetry(
+        runStep,
+        {
+          stepId: 'analyze_characters',
+          stepTitle: 'progress.streamStep.analyzeCharacters',
+          stepIndex: 1,
+          stepTotal: 2,
+          groupId: 'analysis',
+          parallelKey: 'characters',
+          retryable: true,
+        },
+        characterPrompt,
+        'analyze_characters',
+        2200,
+        safeParseJsonObject,
+      ),
+      () => runStepWithRetry(
+        runStep,
+        {
+          stepId: 'analyze_locations',
+          stepTitle: 'progress.streamStep.analyzeLocations',
+          stepIndex: 2,
+          stepTotal: 2,
+          groupId: 'analysis',
+          parallelKey: 'locations',
+          retryable: true,
+        },
+        locationPrompt,
+        'analyze_locations',
+        2200,
+        safeParseJsonObject,
+      ),
+    ],
+    concurrency,
+    async (run) => await run(),
+  )
+  const { output: characterStep, parsed: charactersObject } = analysisResults[0]
+  const { output: locationStep, parsed: locationsObject } = analysisResults[1]
 
   const analyzedCharacters = extractAnalyzedCharacters(charactersObject)
   const analyzedLocations = extractAnalyzedLocations(locationsObject)
@@ -526,6 +376,8 @@ export async function runStoryToScriptOrchestrator(
       stepTitle: 'progress.streamStep.splitClips',
       stepIndex: 1,
       stepTotal: 1,
+      dependsOn: ['analyze_characters', 'analyze_locations'],
+      retryable: true,
     }
 
     const { output, parsed: rawClipList } = await runStepWithRetry(
@@ -608,13 +460,19 @@ export async function runStoryToScriptOrchestrator(
 
   onLog?.('开始步骤3：对每个片段做剧本转换（并行）', { clipCount: clipList.length })
 
-  const screenplayResults = await Promise.all(
-    clipList.map(async (clip, index): Promise<StoryToScriptScreenplayResult> => {
+  const screenplayResults = await mapWithConcurrency(
+    clipList,
+    concurrency,
+    async (clip, index): Promise<StoryToScriptScreenplayResult> => {
       const stepMeta: StoryToScriptStepMeta = {
         stepId: `screenplay_${clip.id}`,
         stepTitle: 'progress.streamStep.screenplayConversion',
         stepIndex: index + 1,
         stepTotal: clipList.length || 1,
+        dependsOn: ['split_clips'],
+        groupId: 'screenplay_conversion',
+        parallelKey: clip.id,
+        retryable: true,
       }
 
       try {
@@ -651,7 +509,7 @@ export async function runStoryToScriptOrchestrator(
           error: message,
         }
       }
-    }),
+    },
   )
 
   const screenplaySuccessCount = screenplayResults.filter((item) => item.success).length

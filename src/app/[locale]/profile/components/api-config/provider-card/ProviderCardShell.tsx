@@ -2,13 +2,18 @@
 
 import type { ReactNode } from 'react'
 import type { ProviderCardProps, ProviderCardTranslator } from './types'
+import { VERIFIABLE_PROVIDER_KEYS } from './types'
 import type { UseProviderCardStateResult } from './hooks/useProviderCardState'
 import { AppIcon } from '@/components/ui/icons'
 import { getProviderKey } from '../types'
 
 interface ProviderCardShellProps {
   provider: ProviderCardProps['provider']
+  dragHandle?: ProviderCardProps['dragHandle']
   onDeleteProvider: ProviderCardProps['onDeleteProvider']
+  onToggleProviderHidden?: ProviderCardProps['onToggleProviderHidden']
+  hideProviderLabel?: ProviderCardProps['hideProviderLabel']
+  showProviderLabel?: ProviderCardProps['showProviderLabel']
   t: ProviderCardTranslator
   state: UseProviderCardStateResult
   children: ReactNode
@@ -24,35 +29,92 @@ export function getCompatibilityLayerBadgeLabel(
   return null
 }
 
+// 连接状态图标
+function StatusIcon({ connected }: { connected: boolean }) {
+  if (connected) {
+    return <AppIcon name="bolt" className="h-3.5 w-3.5 text-green-500" />
+  }
+  return <AppIcon name="unplug" className="h-3.5 w-3.5 text-red-400" />
+}
+
+// 使用统一的 VERIFIABLE_PROVIDER_KEYS（从 types 导入）
+
 export function ProviderCardShell({
   provider,
+  dragHandle,
   onDeleteProvider,
+  onToggleProviderHidden,
+  hideProviderLabel,
+  showProviderLabel,
   t,
   state,
   children,
 }: ProviderCardShellProps) {
   const compatibilityLayerLabel = getCompatibilityLayerBadgeLabel(provider.id, t)
+  const providerKey = getProviderKey(provider.id)
+  const isVerifiable = VERIFIABLE_PROVIDER_KEYS.has(providerKey)
+  const canTest = isVerifiable && !!provider.hasApiKey
+  const isHidden = provider.hidden === true
+  const hiddenToggleLabel = isHidden
+    ? (showProviderLabel || t('showProvider'))
+    : (hideProviderLabel || t('hideProvider'))
 
   return (
     <div className="glass-surface overflow-hidden rounded-2xl">
+
+      {/* ── 头部：logo + 名称 + 心电图 + 右侧操作 ── */}
       <div className="flex items-center justify-between px-3.5 py-2.5">
         <div className="flex items-center gap-2">
-          <div className="glass-surface-soft flex h-6 w-6 items-center justify-center rounded-lg text-xs font-bold text-[var(--glass-text-secondary)]">
-            {provider.name.charAt(0)}
-          </div>
+          {dragHandle}
+          {onToggleProviderHidden && (
+            <button
+              type="button"
+              title={hiddenToggleLabel}
+              aria-label={hiddenToggleLabel}
+              onClick={() => {
+                if (isHidden) {
+                  // Restoring — no confirmation needed
+                  onToggleProviderHidden(provider.id, false)
+                } else {
+                  // Hiding — confirm first
+                  if (window.confirm(t('hideProviderConfirm'))) {
+                    onToggleProviderHidden(provider.id, true)
+                  }
+                }
+              }}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--glass-text-tertiary)] transition-colors hover:text-[var(--glass-text-secondary)]"
+            >
+              <AppIcon name={isHidden ? 'plus' : 'minus'} className="h-3.5 w-3.5" />
+            </button>
+          )}
           <h3 className="text-[15px] font-bold text-[var(--glass-text-primary)]">{provider.name}</h3>
           {compatibilityLayerLabel && (
             <span className="rounded-full border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--glass-text-secondary)]">
               {compatibilityLayerLabel}
             </span>
           )}
-          {provider.hasApiKey ? (
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--glass-tone-success-fg)]" title={t('connected')}></span>
-          ) : (
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--glass-tone-warning-fg)]" title={t('notConfigured')}></span>
-          )}
+          {/* 连接状态图标 */}
+          <span title={provider.hasApiKey ? t('connected') : t('notConfigured')}>
+            <StatusIcon connected={!!provider.hasApiKey} />
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
+          {/* 测试连接按钮（内联在标题行） */}
+          {isVerifiable && !state.isEditing && state.keyTestStatus === 'idle' && (
+            <button
+              onClick={state.handleTestOnly}
+              disabled={!canTest}
+              className={[
+                'flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-all',
+                canTest
+                  ? 'border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)] hover:border-[var(--glass-stroke-strong)] hover:bg-[var(--glass-bg-muted)] hover:text-[var(--glass-text-primary)] cursor-pointer'
+                  : 'border-[var(--glass-stroke-base)] cursor-not-allowed text-[var(--glass-text-tertiary)] opacity-40',
+              ].join(' ')}
+            >
+              <AppIcon name="refresh" className="h-3 w-3" />
+              {t('testConnection')}
+            </button>
+          )}
           {!state.isPresetProvider && onDeleteProvider && (
             <button
               onClick={() => onDeleteProvider(provider.id)}
@@ -74,6 +136,7 @@ export function ProviderCardShell({
         </div>
       </div>
 
+      {/* ── 教程弹窗 ── */}
       {state.showTutorial && state.tutorial && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center glass-overlay"

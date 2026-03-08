@@ -1,4 +1,5 @@
 import type { Job } from 'bullmq'
+import { safeParseJsonArray } from '@/lib/json-repair'
 import { prisma } from '@/lib/prisma'
 import { executeAiTextStep } from '@/lib/ai-runtime'
 import { withInternalLLMStreamCallbacks } from '@/lib/llm-observe/internal-stream-context'
@@ -12,28 +13,7 @@ import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { resolveAnalysisModel } from './resolve-analysis-model'
 
 function parseClipArrayResponse(responseText: string): Array<Record<string, unknown>> {
-  let cleaned = responseText.trim()
-  cleaned = cleaned
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/, '')
-    .replace(/\s*```$/g, '')
-    .trim()
-
-  const firstBracket = cleaned.indexOf('[')
-  const lastBracket = cleaned.lastIndexOf(']')
-  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-    const parsed = JSON.parse(cleaned.slice(firstBracket, lastBracket + 1))
-    if (Array.isArray(parsed)) return parsed as Array<Record<string, unknown>>
-  }
-
-  const firstBrace = cleaned.indexOf('{')
-  const lastBrace = cleaned.lastIndexOf('}')
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    const parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as { clips?: unknown }
-    if (Array.isArray(parsed.clips)) return parsed.clips as Array<Record<string, unknown>>
-  }
-
-  throw new Error('Invalid clip JSON format')
+  return safeParseJsonArray(responseText, 'clips')
 }
 
 function readText(value: unknown): string {
@@ -223,13 +203,31 @@ export async function handleClipsBuildTask(job: Job<TaskJobData>) {
   })
   await assertTaskActive(job, 'clips_build_persist')
 
-  await prisma.novelPromotionClip.deleteMany({
+  const existingClips = await prisma.novelPromotionClip.findMany({
     where: { episodeId },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
   })
-
   const createdClips: Array<{ id: string }> = []
   for (let i = 0; i < resolvedClips.length; i += 1) {
     const clipData = resolvedClips[i]
+    const existing = existingClips[i]
+    if (existing) {
+      const updated = await prisma.novelPromotionClip.update({
+        where: { id: existing.id },
+        data: {
+          startText: clipData.startText,
+          endText: clipData.endText,
+          summary: clipData.summary,
+          location: clipData.location,
+          characters: clipData.characters ? JSON.stringify(clipData.characters) : null,
+          content: clipData.content,
+        },
+        select: { id: true },
+      })
+      createdClips.push(updated)
+      continue
+    }
 
     const created = await prisma.novelPromotionClip.create({
       data: {
@@ -244,6 +242,17 @@ export async function handleClipsBuildTask(job: Job<TaskJobData>) {
       select: { id: true },
     })
     createdClips.push(created)
+  }
+
+  const staleIds = existingClips.slice(resolvedClips.length).map((item) => item.id)
+  if (staleIds.length > 0) {
+    await prisma.novelPromotionClip.deleteMany({
+      where: {
+        id: {
+          in: staleIds,
+        },
+      },
+    })
   }
 
   await reportTaskProgress(job, 96, {

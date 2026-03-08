@@ -1,8 +1,9 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { addCharacterPromptSuffix, getArtStylePrompt, PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
+import { addCharacterPromptSuffix, getArtStylePrompt, isArtStyleValue, PRIMARY_APPEARANCE_INDEX, type ArtStyleValue } from '@/lib/constants'
 import { type TaskJobData } from '@/lib/task/types'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
+import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
@@ -17,6 +18,15 @@ import {
   parseJsonStringArray,
   pickFirstString,
 } from './image-task-handler-shared'
+
+function resolvePayloadArtStyle(payload: AnyObj): ArtStyleValue | undefined {
+  if (!Object.prototype.hasOwnProperty.call(payload, 'artStyle')) return undefined
+  const parsedArtStyle = typeof payload.artStyle === 'string' ? payload.artStyle.trim() : ''
+  if (!isArtStyleValue(parsedArtStyle)) {
+    throw new Error('Invalid artStyle in IMAGE_CHARACTER payload')
+  }
+  return parsedArtStyle
+}
 
 interface CharacterAppearanceRecord {
   id: string
@@ -96,7 +106,8 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
 
   if (!appearance) throw new Error('Character appearance not found')
 
-  const artStyle = getArtStylePrompt(models.artStyle, job.data.locale)
+  const payloadArtStyle = resolvePayloadArtStyle(payload)
+  const artStyle = getArtStylePrompt(payloadArtStyle ?? models.artStyle, job.data.locale)
   const descriptions = parseJsonStringArray(appearance.descriptions)
   const baseDescriptions = descriptions.length > 0 ? descriptions : [appearance.description || '']
 
@@ -122,9 +133,10 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
   const primaryReferenceImages = await normalizeReferenceImagesForGeneration(primaryReferenceInputs)
 
   const singleIndex = payload.imageIndex ?? payload.descriptionIndex
+  const count = normalizeImageGenerationCount('character', payload.count)
   const indexes = singleIndex !== undefined
     ? [Number(singleIndex)]
-    : baseDescriptions.slice(0, 3).map((_v, idx) => idx)
+    : Array.from({ length: count }, (_value, index) => index)
 
   const imageUrls = parseImageUrls(appearance.imageUrls, 'characterAppearance.imageUrls')
   const nextImageUrls = [...imageUrls]

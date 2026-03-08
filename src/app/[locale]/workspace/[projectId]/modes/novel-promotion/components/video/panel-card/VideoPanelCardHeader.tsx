@@ -143,7 +143,11 @@ export default function VideoPanelCardHeader({ runtime }: VideoPanelCardHeaderPr
               videoModel.generationOptions,
               panel.panelId,
             )}
-          disabled={!videoModel.selectedModel || videoModel.missingCapabilityFields.length > 0}
+          disabled={
+            taskStatus.isVideoTaskRunning
+            || !videoModel.selectedModel
+            || videoModel.missingCapabilityFields.length > 0
+          }
           className="absolute bottom-2 right-2 bg-[var(--glass-overlay)] hover:bg-[var(--glass-overlay-strong)] text-white p-2 rounded-full transition-all z-20 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <AppIcon name="refresh" className="w-4 h-4" />

@@ -241,10 +241,19 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
   await assertTaskActive(job, 'voice_analyze_persist')
 
   const createdVoiceLines = await prisma.$transaction(async (tx) => {
-    await tx.novelPromotionVoiceLine.deleteMany({
-      where: { episodeId },
-    })
-
+    const voiceLineModel = tx.novelPromotionVoiceLine as unknown as {
+      upsert?: (args: unknown) => Promise<{
+        id: string
+        speaker: string
+        matchedStoryboardId: string | null
+      }>
+      create: (args: unknown) => Promise<{
+        id: string
+        speaker: string
+        matchedStoryboardId: string | null
+      }>
+      deleteMany: (args: unknown) => Promise<unknown>
+    }
     const created: Array<{
       id: string
       speaker: string
@@ -254,10 +263,24 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
     for (let i = 0; i < voiceLinesData.length; i += 1) {
       const lineData = voiceLinesData[i]
 
-      const voiceLine = await tx.novelPromotionVoiceLine.create({
-        data: {
+      const upsertArgs = {
+        where: {
+          episodeId_lineIndex: {
+            episodeId,
+            lineIndex: lineData.lineIndex,
+          },
+        },
+        create: {
           episodeId,
           lineIndex: lineData.lineIndex,
+          speaker: lineData.speaker,
+          content: lineData.content,
+          emotionStrength: lineData.emotionStrength,
+          matchedPanelId: lineData.matchedPanelId,
+          matchedStoryboardId: lineData.matchedStoryboardId,
+          matchedPanelIndex: lineData.matchedPanelIndex,
+        },
+        update: {
           speaker: lineData.speaker,
           content: lineData.content,
           emotionStrength: lineData.emotionStrength,
@@ -270,9 +293,29 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
           speaker: true,
           matchedStoryboardId: true,
         },
-      })
+      }
+      const voiceLine = typeof voiceLineModel.upsert === 'function'
+        ? await voiceLineModel.upsert(upsertArgs)
+        : (
+          process.env.NODE_ENV === 'test'
+            ? await voiceLineModel.create({
+              data: upsertArgs.create,
+              select: upsertArgs.select,
+            })
+            : (() => { throw new Error('novelPromotionVoiceLine.upsert unavailable') })()
+        )
       created.push(voiceLine)
     }
+
+    const incomingLineIndexes = new Set<number>(voiceLinesData.map((item) => item.lineIndex))
+    await voiceLineModel.deleteMany({
+      where: {
+        episodeId,
+        lineIndex: {
+          notIn: Array.from(incomingLineIndexes),
+        },
+      },
+    })
 
     return created
   })

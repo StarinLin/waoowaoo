@@ -199,6 +199,7 @@ describe('billing/cost', () => {
     expect(calcVoiceDesign()).toBeGreaterThan(0)
     expect(calcLipSync()).toBeGreaterThan(0)
     expect(calcLipSync('vidu::vidu-lipsync')).toBeGreaterThan(0)
+    expect(calcLipSync('bailian::videoretalk')).toBeGreaterThan(0)
   })
 
   it('calculates voice costs from quantities', () => {

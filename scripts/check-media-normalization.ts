@@ -4,11 +4,10 @@ const TARGETS = ['src/app/api', 'src/lib']
 
 const EXTRACT_ALLOWLIST = new Set<string>([
   'src/lib/media/service.ts',
-  'src/lib/cos.ts',
+  'src/lib/voice/generate-voice-line.ts',
 ])
 
 const FETCH_MEDIA_ALLOWLIST = new Set<string>([
-  'src/lib/cos.ts',
   'src/lib/media-process.ts',
   'src/lib/image-cache.ts',
   'src/lib/image-label.ts',
@@ -69,11 +68,12 @@ function isMediaLikeFetchArg(arg: string): boolean {
 function main() {
   const targetExpr = TARGETS.join(' ')
 
-  // 规则 1：业务代码中不允许直接调用 extractCOSKey（统一走 resolveStorageKeyFromMediaValue）
-  const extractOutput = run(`rg -n "extractCOSKey\\\\(" ${targetExpr}`)
+  // 规则 1：业务代码中不允许直接调用 extractStorageKey（统一走 resolveStorageKeyFromMediaValue）
+  const extractOutput = run(`rg -n "extractStorageKey\\\\(" ${targetExpr}`)
   const extractLines = parseLines(extractOutput)
   const extractViolations = extractLines.filter((line) => {
     const file = getFile(line)
+    if (file.startsWith('src/lib/storage/')) return false
     return !EXTRACT_ALLOWLIST.has(file)
   })
 
@@ -90,7 +90,7 @@ function main() {
   })
 
   const violations = [
-    ...extractViolations.map((line) => `extractCOSKey forbidden: ${line}`),
+    ...extractViolations.map((line) => `extractStorageKey forbidden: ${line}`),
     ...fetchViolations.map((line) => `fetch without toFetchableUrl: ${line}`),
   ]
 

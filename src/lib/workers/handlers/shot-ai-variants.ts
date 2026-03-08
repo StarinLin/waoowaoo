@@ -1,6 +1,7 @@
 import type { Job } from 'bullmq'
+import { safeParseJsonArray } from '@/lib/json-repair'
 import { prisma } from '@/lib/prisma'
-import { getSignedUrl } from '@/lib/cos'
+import { getSignedUrl } from '@/lib/storage'
 import { executeAiVisionStep } from '@/lib/ai-runtime'
 import { withInternalLLMStreamCallbacks } from '@/lib/llm-observe/internal-stream-context'
 import { reportTaskProgress } from '@/lib/workers/shared'
@@ -24,15 +25,7 @@ function readRequiredString(value: unknown, field: string): string {
 }
 
 function parseJsonArrayResponse(responseText: string): AnyObj[] {
-  let jsonText = responseText.trim()
-  jsonText = jsonText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '')
-  const firstBracket = jsonText.indexOf('[')
-  const lastBracket = jsonText.lastIndexOf(']')
-  if (firstBracket === -1 || lastBracket === -1 || lastBracket <= firstBracket) {
-    throw new Error('JSON array not found in response')
-  }
-  jsonText = jsonText.substring(firstBracket, lastBracket + 1)
-  return JSON.parse(jsonText) as AnyObj[]
+  return safeParseJsonArray(responseText) as AnyObj[]
 }
 
 function parsePanelCharacters(value: string | null): string {

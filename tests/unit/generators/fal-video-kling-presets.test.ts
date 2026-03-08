@@ -63,7 +63,9 @@ describe('FalVideoGenerator kling presets', () => {
     expect(result.externalId).toBe(`FAL:VIDEO:${endpoint}:req_kling_1`)
     expect(apiConfigMock.getProviderConfig).toHaveBeenCalledWith('user-1', 'fal')
 
-    const submitCall = asyncSubmitMock.submitFalTask.mock.calls.at(0)
+    const submitCall = asyncSubmitMock.submitFalTask.mock.calls.at(0) as
+      | [string, Record<string, unknown>, string]
+      | undefined
     expect(submitCall).toBeTruthy()
     if (!submitCall) {
       throw new Error('submitFalTask should be called')
@@ -72,7 +74,7 @@ describe('FalVideoGenerator kling presets', () => {
     expect(submitCall[0]).toBe(endpoint)
     expect(submitCall[2]).toBe('fal-key')
 
-    const payload = submitCall[1] as Record<string, unknown>
+    const payload = submitCall[1]
     expect(payload.prompt).toBe('test prompt')
     expect(payload.duration).toBe('5')
 

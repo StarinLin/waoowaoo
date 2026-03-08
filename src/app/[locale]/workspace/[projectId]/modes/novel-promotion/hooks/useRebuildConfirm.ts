@@ -45,6 +45,7 @@ export function useRebuildConfirm({
 }: UseRebuildConfirmParams) {
   const [showRebuildConfirm, setShowRebuildConfirm] = useState(false)
   const [rebuildConfirmContext, setRebuildConfirmContext] = useState<RebuildConfirmContext | null>(null)
+  const [pendingActionType, setPendingActionType] = useState<RebuildActionType | null>(null)
   const pendingRebuildActionRef = useRef<(() => Promise<void>) | null>(null)
 
   const getFallbackStoryboardStats = useCallback(() => {
@@ -84,26 +85,44 @@ export function useRebuildConfirm({
     actionType: RebuildActionType,
     action: () => Promise<void>
   ) => {
-    const downstream = await checkStoryboardDownstreamData()
-    if (!downstream.shouldConfirm) {
-      await action()
-      return
-    }
+    if (pendingActionType === actionType) return
 
-    pendingRebuildActionRef.current = action
-    setRebuildConfirmContext({
-      actionType,
-      storyboardCount: downstream.storyboardCount,
-      panelCount: downstream.panelCount,
-    })
-    setShowRebuildConfirm(true)
-  }, [checkStoryboardDownstreamData])
+    setPendingActionType(actionType)
+    try {
+      const downstream = await checkStoryboardDownstreamData()
+      if (!downstream.shouldConfirm) {
+        await action()
+        return
+      }
+
+      pendingRebuildActionRef.current = async () => {
+        try {
+          await action()
+        } finally {
+          setPendingActionType((current) => (current === actionType ? null : current))
+        }
+      }
+      setRebuildConfirmContext({
+        actionType,
+        storyboardCount: downstream.storyboardCount,
+        panelCount: downstream.panelCount,
+      })
+      setShowRebuildConfirm(true)
+    } catch (error) {
+      setPendingActionType((current) => (current === actionType ? null : current))
+      throw error
+    }
+  }, [checkStoryboardDownstreamData, pendingActionType])
 
   const handleCancelRebuildConfirm = useCallback(() => {
+    const currentActionType = rebuildConfirmContext?.actionType ?? pendingActionType
     pendingRebuildActionRef.current = null
     setShowRebuildConfirm(false)
     setRebuildConfirmContext(null)
-  }, [])
+    if (currentActionType) {
+      setPendingActionType((current) => (current === currentActionType ? null : current))
+    }
+  }, [pendingActionType, rebuildConfirmContext])
 
   const handleAcceptRebuildConfirm = useCallback(() => {
     const pendingAction = pendingRebuildActionRef.current
@@ -112,7 +131,9 @@ export function useRebuildConfirm({
     setRebuildConfirmContext(null)
     if (pendingAction) {
       void pendingAction()
+      return
     }
+    setPendingActionType(null)
   }, [])
 
   const rebuildConfirmTitle = useMemo(() => {
@@ -139,6 +160,7 @@ export function useRebuildConfirm({
     showRebuildConfirm,
     rebuildConfirmTitle,
     rebuildConfirmMessage,
+    pendingActionType,
     runWithRebuildConfirm,
     handleCancelRebuildConfirm,
     handleAcceptRebuildConfirm,

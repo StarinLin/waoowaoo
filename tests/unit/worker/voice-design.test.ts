@@ -2,7 +2,7 @@ import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
-const qwenMock = vi.hoisted(() => ({
+const bailianMock = vi.hoisted(() => ({
   createVoiceDesign: vi.fn(),
   validateVoicePrompt: vi.fn(),
   validatePreviewText: vi.fn(),
@@ -17,7 +17,7 @@ const workerMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
 }))
 
-vi.mock('@/lib/qwen-voice-design', () => qwenMock)
+vi.mock('@/lib/providers/bailian/voice-design', () => bailianMock)
 vi.mock('@/lib/api-config', () => apiConfigMock)
 vi.mock('@/lib/workers/shared', () => ({
   reportTaskProgress: workerMock.reportTaskProgress,
@@ -47,13 +47,13 @@ function buildJob(type: TaskJobData['type'], payload: Record<string, unknown>): 
 describe('worker voice-design behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    qwenMock.validateVoicePrompt.mockReturnValue({ valid: true })
-    qwenMock.validatePreviewText.mockReturnValue({ valid: true })
-    apiConfigMock.getProviderConfig.mockResolvedValue({ apiKey: 'qwen-key' })
-    qwenMock.createVoiceDesign.mockResolvedValue({
+    bailianMock.validateVoicePrompt.mockReturnValue({ valid: true })
+    bailianMock.validatePreviewText.mockReturnValue({ valid: true })
+    apiConfigMock.getProviderConfig.mockResolvedValue({ apiKey: 'bailian-key' })
+    bailianMock.createVoiceDesign.mockResolvedValue({
       success: true,
       voiceId: 'voice-id-1',
-      targetModel: 'qwen-tts',
+      targetModel: 'bailian-tts',
       audioBase64: 'base64-audio',
       sampleRate: 24000,
       responseFormat: 'mp3',
@@ -68,7 +68,7 @@ describe('worker voice-design behavior', () => {
   })
 
   it('invalid prompt validation -> explicit error message from validator', async () => {
-    qwenMock.validateVoicePrompt.mockReturnValue({ valid: false, error: 'bad prompt' })
+    bailianMock.validateVoicePrompt.mockReturnValue({ valid: false, error: 'bad prompt' })
 
     const job = buildJob(TASK_TYPE.VOICE_DESIGN, {
       voicePrompt: 'x',
@@ -87,13 +87,13 @@ describe('worker voice-design behavior', () => {
 
     const result = await handleVoiceDesignTask(job)
 
-    expect(apiConfigMock.getProviderConfig).toHaveBeenCalledWith('user-1', 'qwen')
-    expect(qwenMock.createVoiceDesign).toHaveBeenCalledWith({
+    expect(apiConfigMock.getProviderConfig).toHaveBeenCalledWith('user-1', 'bailian')
+    expect(bailianMock.createVoiceDesign).toHaveBeenCalledWith({
       voicePrompt: 'calm female narrator',
       previewText: 'hello world',
       preferredName: 'custom_name',
       language: 'en',
-    }, 'qwen-key')
+    }, 'bailian-key')
 
     expect(result).toEqual(expect.objectContaining({
       success: true,

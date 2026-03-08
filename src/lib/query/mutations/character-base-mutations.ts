@@ -4,12 +4,12 @@ import { useRef } from 'react'
 import type { Character, Project } from '@/types/project'
 import { queryKeys } from '../keys'
 import type { ProjectAssetsData } from '../hooks/useProjectAssets'
+import { apiFetch } from '@/lib/api-fetch'
 import {
     clearTaskTargetOverlay,
     upsertTaskTargetOverlay,
 } from '../task-target-overlay'
 import {
-    getPageLocale,
     invalidateQueryTemplates,
     requestJsonWithError,
     requestVoidWithError,
@@ -115,14 +115,23 @@ export function useGenerateProjectCharacterImage(projectId: string) {
         invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
 
     return useMutation({
-        mutationFn: async ({ characterId, appearanceId }: { characterId: string; appearanceId: string }) => {
+        mutationFn: async ({
+            characterId,
+            appearanceId,
+            count,
+        }: {
+            characterId: string
+            appearanceId: string
+            count?: number
+        }) => {
             return await requestJsonWithError(`/api/novel-promotion/${projectId}/generate-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     type: 'character',
                     id: characterId,
-                    appearanceId
+                    appearanceId,
+                    count,
                 })
             }, 'Failed to generate image')
         },
@@ -366,9 +375,9 @@ export function useUpdateProjectCharacterName(projectId: string) {
 
             // 等待图片标签更新完成，确保 onSuccess invalidate 后前端能立即看到新标签
             try {
-                await fetch(`/api/novel-promotion/${projectId}/update-asset-label`, {
+                await apiFetch(`/api/novel-promotion/${projectId}/update-asset-label`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept-Language': getPageLocale() },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         type: 'character',
                         id: characterId,

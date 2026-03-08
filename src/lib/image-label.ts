@@ -5,7 +5,7 @@ import { logError as _ulogError } from '@/lib/logging/core'
  */
 
 import sharp from 'sharp'
-import { uploadToCOS, getSignedUrl, generateUniqueKey, toFetchableUrl } from '@/lib/cos'
+import { uploadObject, getSignedUrl, generateUniqueKey, toFetchableUrl } from '@/lib/storage'
 import { decodeImageUrlsFromDb, encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { initializeFonts, createLabelSVG } from '@/lib/fonts'
@@ -73,7 +73,7 @@ export async function updateImageLabel(
         ? generateUniqueKey(options.keyPrefix || 'labeled-image', 'jpg')
         : originalKey
 
-    await uploadToCOS(processed, finalKey)
+    await uploadObject(processed, finalKey)
     return finalKey
 }
 

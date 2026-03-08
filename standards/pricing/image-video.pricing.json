@@ -5969,7 +5969,7 @@
   {
     "apiType": "voice-design",
     "provider": "system",
-    "modelId": "qwen-voice-design",
+    "modelId": "bailian-voice-design",
     "pricing": {
       "mode": "flat",
       "flatAmount": 0.2
@@ -5977,8 +5977,8 @@
   },
   {
     "apiType": "voice-design",
-    "provider": "qwen",
-    "modelId": "qwen",
+    "provider": "bailian",
+    "modelId": "bailian",
     "pricing": {
       "mode": "flat",
       "flatAmount": 0.2
@@ -6000,6 +6000,15 @@
     "pricing": {
       "mode": "flat",
       "flatAmount": 0.5
+    }
+  },
+  {
+    "apiType": "lip-sync",
+    "provider": "bailian",
+    "modelId": "videoretalk",
+    "pricing": {
+      "mode": "flat",
+      "flatAmount": 0.08
     }
   },
   {

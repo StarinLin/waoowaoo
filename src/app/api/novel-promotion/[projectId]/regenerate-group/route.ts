@@ -7,6 +7,9 @@ import { TASK_TYPE } from '@/lib/task/types'
 import { buildDefaultTaskBillingInfo } from '@/lib/billing'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
 import { getProjectModelConfig, buildImageBillingPayload } from '@/lib/config-service'
+import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
+import { ensureProjectLocationImageSlots } from '@/lib/image-generation/location-slots'
+import { prisma } from '@/lib/prisma'
 import {
   hasCharacterAppearanceOutput,
   hasLocationImageOutput
@@ -27,6 +30,9 @@ export const POST = apiHandler(async (
   const type = body?.type
   const id = body?.id
   const appearanceId = body?.appearanceId
+  const count = type === 'character'
+    ? normalizeImageGenerationCount('character', body?.count)
+    : normalizeImageGenerationCount('location', body?.count)
 
   if (!type || !id) {
     throw new ApiError('INVALID_PARAMS')
@@ -42,6 +48,20 @@ export const POST = apiHandler(async (
 
   const targetType = type === 'character' ? 'CharacterAppearance' : 'LocationImage'
   const targetId = type === 'character' ? appearanceId : id
+  if (type === 'location') {
+    const location = await prisma.novelPromotionLocation.findUnique({
+      where: { id },
+      select: { name: true, summary: true },
+    })
+    if (!location) {
+      throw new ApiError('NOT_FOUND')
+    }
+    await ensureProjectLocationImageSlots({
+      locationId: id,
+      count,
+      fallbackDescription: location.summary || location.name,
+    })
+  }
   const hasOutputAtStart = type === 'character'
     ? await hasCharacterAppearanceOutput({
       appearanceId,
@@ -62,7 +82,7 @@ export const POST = apiHandler(async (
       projectId,
       userId: session.user.id,
       imageModel,
-      basePayload: body,
+      basePayload: { ...body, count },
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Image model capability not configured'
@@ -80,7 +100,7 @@ export const POST = apiHandler(async (
       intent: 'regenerate',
       hasOutputAtStart
     }),
-    dedupeKey: `regenerate_group:${targetType}:${targetId}`,
+    dedupeKey: `regenerate_group:${targetType}:${targetId}:${count}`,
     billingInfo: buildDefaultTaskBillingInfo(TASK_TYPE.REGENERATE_GROUP, billingPayload)
   })
 

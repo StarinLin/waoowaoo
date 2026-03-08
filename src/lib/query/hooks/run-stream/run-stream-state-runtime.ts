@@ -7,7 +7,8 @@ import { clearRunSnapshot, loadRunSnapshot, saveRunSnapshot } from './snapshot'
 import { subscribeRecoveredRun } from './recovered-run-subscription'
 import { executeRunRequest } from './run-request-executor'
 import { deriveRunStreamView } from './run-stream-view'
-import type { RunResult, RunState, UseRunStreamStateOptions } from './types'
+import type { RunResult, RunState, RunStreamView, UseRunStreamStateOptions } from './types'
+import { apiFetch } from '@/lib/api-fetch'
 
 export type {
   RunResult,
@@ -16,12 +17,13 @@ export type {
   UseRunStreamStateOptions,
 } from './types'
 
-const TERMINAL_CLEANUP_MS = 15_000
 const TASK_STREAM_TIMEOUT_MS = 1000 * 60 * 30
 const PROBE_COOLDOWN_MS = 60_000
 const probedScopes = new Map<string, number>()
 
-export function useRunStreamState<TParams>(options: UseRunStreamStateOptions<TParams>) {
+export function useRunStreamState<TParams extends Record<string, unknown>>(
+  options: UseRunStreamStateOptions<TParams>,
+): RunStreamView {
   const {
     projectId,
     endpoint,
@@ -193,10 +195,61 @@ export function useRunStreamState<TParams>(options: UseRunStreamStateOptions<TPa
     ],
   )
 
+  const retryStep = useCallback(async (params: {
+    stepId: string
+    modelOverride?: string
+    reason?: string
+  }): Promise<RunResult> => {
+    const runId = runStateRef.current?.runId || ''
+    if (!runId) {
+      throw new Error('runId is required')
+    }
+    const stepId = params.stepId.trim()
+    if (!stepId) {
+      throw new Error('stepId is required')
+    }
+
+    const response = await apiFetch(
+      `/api/runs/${runId}/steps/${encodeURIComponent(stepId)}/retry`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          modelOverride: params.modelOverride || undefined,
+          reason: params.reason || undefined,
+        }),
+      },
+    )
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      const errorMessage =
+        payload && typeof payload === 'object' && typeof (payload as { error?: { message?: unknown } }).error?.message === 'string'
+          ? (payload as { error: { message: string } }).error.message
+          : 'retry step failed'
+      throw new Error(errorMessage)
+    }
+
+    applyEvent({
+      runId,
+      event: 'run.start',
+      ts: new Date().toISOString(),
+      status: 'running',
+      message: 'retrying failed step',
+    })
+    setIsRecoveredRunning(true)
+    return {
+      runId,
+      status: 'running',
+      summary: null,
+      payload: payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null,
+      errorMessage: '',
+    }
+  }, [applyEvent])
+
   const stop = useCallback(() => {
     const runningRunId = runState?.status === 'running' ? runState.runId : ''
     if (runningRunId) {
-      void fetch(`/api/runs/${runningRunId}/cancel`, {
+      void apiFetch(`/api/runs/${runningRunId}/cancel`, {
         method: 'POST',
       }).catch(() => null)
       applyEvent({
@@ -224,18 +277,6 @@ export function useRunStreamState<TParams>(options: UseRunStreamStateOptions<TPa
     const timer = window.setInterval(() => setClock(Date.now()), 500)
     return () => window.clearInterval(timer)
   }, [])
-
-  useEffect(() => {
-    if (!runState?.terminalAt) return
-    const timer = window.setTimeout(() => {
-      setRunState((prev) => {
-        if (!prev || !prev.terminalAt) return prev
-        if (Date.now() - prev.terminalAt < TERMINAL_CLEANUP_MS) return prev
-        return null
-      })
-    }, TERMINAL_CLEANUP_MS + 100)
-    return () => window.clearTimeout(timer)
-  }, [runState?.terminalAt])
 
   const view = useMemo(() => {
     return deriveRunStreamView({
@@ -272,7 +313,8 @@ export function useRunStreamState<TParams>(options: UseRunStreamStateOptions<TPa
     outputText: view.outputText,
     overallProgress: view.overallProgress,
     activeMessage: view.activeMessage,
-    run,
+    run: run as (params: Record<string, unknown>) => Promise<RunResult>,
+    retryStep,
     stop,
     reset,
     selectStep,

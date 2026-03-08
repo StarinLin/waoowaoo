@@ -105,7 +105,7 @@ export default function StoryboardPanelList({
         return (
           <div
             key={panel.id || index}
-            className="relative group/panel"
+            className="relative group/panel h-full"
             style={{ zIndex: textPanels.length - index }}
           >
             <PanelCard

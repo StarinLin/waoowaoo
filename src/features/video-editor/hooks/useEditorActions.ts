@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react'
 import { VideoClip, VideoEditorProject } from '../types/editor.types'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface UseEditorActionsProps {
     projectId: string
@@ -82,7 +83,7 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
      * 保存项目到服务器
      */
     const saveProject = useCallback(async (project: VideoEditorProject) => {
-        const response = await fetch(`/api/novel-promotion/${projectId}/editor`, {
+        const response = await apiFetch(`/api/novel-promotion/${projectId}/editor`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectData: project })
@@ -99,7 +100,7 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
      * 加载项目
      */
     const loadProject = useCallback(async (): Promise<VideoEditorProject | null> => {
-        const response = await fetch(`/api/novel-promotion/${projectId}/editor?episodeId=${episodeId}`)
+        const response = await apiFetch(`/api/novel-promotion/${projectId}/editor?episodeId=${episodeId}`)
 
         if (!response.ok) {
             if (response.status === 404) return null
@@ -114,7 +115,7 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
      * 发起渲染导出
      */
     const startRender = useCallback(async (editorProjectId: string) => {
-        const response = await fetch(`/api/novel-promotion/${projectId}/editor/render`, {
+        const response = await apiFetch(`/api/novel-promotion/${projectId}/editor/render`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -135,7 +136,7 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
      * 获取渲染状态
      */
     const getRenderStatus = useCallback(async (editorProjectId: string) => {
-        const response = await fetch(
+        const response = await apiFetch(
             `/api/novel-promotion/${projectId}/editor/render?id=${editorProjectId}`
         )
 

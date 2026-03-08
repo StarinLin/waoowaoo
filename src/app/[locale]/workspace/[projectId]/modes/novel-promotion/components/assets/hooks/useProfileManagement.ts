@@ -38,10 +38,10 @@ export function useProfileManagement({
     const confirmCharacterProfileMutation = useConfirmProjectCharacterProfile(projectId)
     const batchConfirmProfilesMutation = useBatchConfirmProjectCharacterProfiles(projectId)
 
-    // 🔥 修复：使用 Set 支持同时确认多个角色
+    // 🔥 修复：使用 Set 支持同时确认多个角色（即时反馈用；刷新后由 profileConfirmTaskRunning 接替）
     const [confirmingCharacterIds, setConfirmingCharacterIds] = useState<Set<string>>(new Set())
     const [deletingCharacterId, setDeletingCharacterId] = useState<string | null>(null)
-    const [batchConfirming, setBatchConfirming] = useState(false)
+    const [batchConfirmingLocal, setBatchConfirmingLocal] = useState(false)
     const [editingProfile, setEditingProfile] = useState<{
         characterId: string
         characterName: string
@@ -53,6 +53,22 @@ export function useProfileManagement({
         characters.filter(char => char.profileData && !char.profileConfirmed),
         [characters]
     )
+
+    // 🔥 合并任务系统状态 + 本地即时反馈状态，判断角色是否在确认中
+    const isConfirmingCharacter = useCallback((id: string) => {
+        // 本地即时反馈
+        if (confirmingCharacterIds.has(id)) return true
+        // 任务系统持久化状态（刷新后仍可恢复）
+        const character = characters.find(c => c.id === id)
+        return !!character?.profileConfirmTaskRunning
+    }, [confirmingCharacterIds, characters])
+
+    // 🔥 batchConfirming 合并本地 + 任务系统状态
+    const batchConfirming = useMemo(() => {
+        if (batchConfirmingLocal) return true
+        // 如果有任何未确认角色正在运行档案确认任务，视为批量确认中
+        return unconfirmedCharacters.some(char => char.profileConfirmTaskRunning)
+    }, [batchConfirmingLocal, unconfirmedCharacters])
 
     // 打开编辑对话框
     const handleEditProfile = useCallback((characterId: string, characterName: string) => {
@@ -109,7 +125,7 @@ export function useProfileManagement({
             return
         }
 
-        setBatchConfirming(true)
+        setBatchConfirmingLocal(true)
         try {
             const result = await batchConfirmProfilesMutation.mutateAsync()
             const confirmedCount = result.count ?? 0
@@ -119,7 +135,7 @@ export function useProfileManagement({
             const message = error instanceof Error ? error.message : t('common.unknownError')
             showToast?.(t('characterProfile.batchConfirmFailed', { error: message }), 'error')
         } finally {
-            setBatchConfirming(false)
+            setBatchConfirmingLocal(false)
         }
     }, [batchConfirmProfilesMutation, refreshAssets, showToast, t, unconfirmedCharacters.length])
 
@@ -147,7 +163,7 @@ export function useProfileManagement({
         characters,
         unconfirmedCharacters,
         confirmingCharacterIds,
-        isConfirmingCharacter: (id: string) => confirmingCharacterIds.has(id),
+        isConfirmingCharacter,
         deletingCharacterId,
         batchConfirming,
         editingProfile,

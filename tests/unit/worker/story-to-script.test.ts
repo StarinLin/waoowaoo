@@ -16,6 +16,11 @@ const workerMock = vi.hoisted(() => ({
 
 const configMock = vi.hoisted(() => ({
   resolveProjectModelCapabilityGenerationOptions: vi.fn(async () => ({ reasoningEffort: 'high' })),
+  getUserWorkflowConcurrencyConfig: vi.fn(async () => ({
+    analysis: 2,
+    image: 5,
+    video: 5,
+  })),
 }))
 
 const orchestratorMock = vi.hoisted(() => ({
