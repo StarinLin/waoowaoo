@@ -56,7 +56,9 @@ export const POST = apiHandler(async (
   const name = normalizeString(body.name)
   const description = normalizeString(body.description)
   const summary = normalizeString(body.summary)
-  const count = normalizeImageGenerationCount('location', body.count)
+  const count = Object.prototype.hasOwnProperty.call(body, 'count')
+    ? normalizeImageGenerationCount('location', body.count)
+    : 1
   let artStyle: ArtStyleValue | undefined
   if (Object.prototype.hasOwnProperty.call(body, 'artStyle')) {
     const parsedArtStyle = normalizeString(body.artStyle)

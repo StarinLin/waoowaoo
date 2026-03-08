@@ -45,18 +45,18 @@
 
 ```bash
 # 下载 docker-compose.yml
-wget https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
-
-# 将本地构建替换为预构建镜像
-sed -i 's|build: \.|image: ghcr.io/saturndec/waoowaoo:latest|' docker-compose.yml
+curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
 
 # 启动所有服务
 docker compose up -d
 ```
 
-更新版本：
+> ⚠️ 当前为测试版，版本间数据库不兼容。升级请先清除旧数据：
+
 ```bash
-docker compose pull && docker compose up -d
+docker compose down -v
+curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
+docker compose up -d
 ```
 
 ### 方式二：克隆仓库 + Docker 构建（完全控制）

@@ -133,7 +133,12 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
     const modelId = userModels.locationModel
     if (!modelId) throw new Error('User location model not configured')
 
-    for (const image of location.images) {
+    const count = normalizeImageGenerationCount('location', payload.count)
+    const targetImages = Object.prototype.hasOwnProperty.call(payload, 'count')
+      ? location.images.slice(0, count)
+      : location.images
+
+    for (const image of targetImages) {
       if (!image.description) continue
       const prompt = artStyle ? `${addLocationPromptSuffix(image.description)}，${artStyle}` : addLocationPromptSuffix(image.description)
 
@@ -157,7 +162,7 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
       })
     }
 
-    return { type: payload.type, locationId: location.id, imageCount: location.images.length }
+    return { type: payload.type, locationId: location.id, imageCount: targetImages.length }
   }
 
   throw new Error(`Unsupported asset-hub image type: ${String(payload.type)}`)

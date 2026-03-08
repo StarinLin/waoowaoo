@@ -18,7 +18,7 @@ import LocationImageList from './location-card/LocationImageList'
 import LocationCardActions from './location-card/LocationCardActions'
 import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
-import { countGeneratedImageSlots, shouldShowImageSlotGrid } from '@/lib/image-generation/slot-state'
+import { countGeneratedImageSlots, resolveDisplayImageSlots } from '@/lib/image-generation/slot-state'
 import { AppIcon } from '@/components/ui/icons'
 
 interface LocationCardProps {
@@ -102,10 +102,7 @@ export default function LocationCard({
 
   const orderedImages = [...(location.images || [])].sort((left, right) => left.imageIndex - right.imageIndex)
   const imagesWithUrl = orderedImages.filter((img) => img.imageUrl)
-  const totalImageCount = orderedImages.length
   const generatedImageCount = countGeneratedImageSlots(orderedImages)
-  const hasAnyImageError = orderedImages.some((img) => !!(img.lastError || img.imageErrorMessage))
-  const hasMultipleImages = totalImageCount > 1
 
   // 获取选中的图片
   const selectedImage = location.selectedImageId
@@ -167,20 +164,22 @@ export default function LocationCard({
     locationTaskRunning ||
     isAnyTaskRunning
 
+  const displaySelectionImages = resolveDisplayImageSlots(orderedImages, {
+    hasRunningTask: isTaskRunning,
+    requestedCount: generationCount,
+  })
+  const displaySlotCount = displaySelectionImages.length
+  const hasMultipleImages = generatedImageCount > 1
+
   // 检查是否有历史版本（用于撤回功能）
   const hasPreviousVersion = location.images?.some(img => img.previousImageUrl) || false
 
-  const showSelectionMode = shouldShowImageSlotGrid({
-    totalSlotCount: totalImageCount,
-    generatedCount: generatedImageCount,
-    hasRunningTask: isTaskRunning,
-    hasAnyError: hasAnyImageError,
-  })
+  const showSelectionMode = displaySlotCount > 1
 
   // 选择模式：显示名字在上，三张图片在下
   if (showSelectionMode) {
-    const selectionStatusText = isTaskRunning || generatedImageCount < totalImageCount
-      ? t('image.generatedProgress', { generated: generatedImageCount, total: totalImageCount })
+    const selectionStatusText = isTaskRunning || generatedImageCount < displaySlotCount
+      ? t('image.generatedProgress', { generated: generatedImageCount, total: displaySlotCount })
       : selectedIndex !== null
         ? t('image.optionSelected', { number: selectedIndex + 1 })
         : t('image.selectFirst')
@@ -245,7 +244,7 @@ export default function LocationCard({
           mode="selection"
           locationId={location.id}
           locationName={location.name}
-          images={orderedImages}
+          images={displaySelectionImages}
           selectedImageId={location.selectedImageId}
           selectedIndex={selectedIndex}
           isGroupTaskRunning={isGroupTaskRunning}

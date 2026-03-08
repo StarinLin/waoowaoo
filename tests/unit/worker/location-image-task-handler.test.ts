@@ -129,4 +129,30 @@ describe('worker location-image-task-handler behavior', () => {
       'Invalid artStyle in IMAGE_LOCATION payload',
     )
   })
+
+  it('honors requested count when location already has more slots', async () => {
+    prismaMock.locationImage.findUnique.mockResolvedValueOnce(null)
+    prismaMock.novelPromotionLocation.findUnique.mockResolvedValueOnce({
+      id: 'location-1',
+      name: 'Old Town',
+      images: [
+        { id: 'location-image-1', locationId: 'location-1', imageIndex: 0, description: '雨夜街道 A' },
+        { id: 'location-image-2', locationId: 'location-1', imageIndex: 1, description: '雨夜街道 B' },
+        { id: 'location-image-3', locationId: 'location-1', imageIndex: 2, description: '雨夜街道 C' },
+      ],
+    })
+
+    const result = await handleLocationImageTask(buildJob({ locationId: 'location-1', count: 1 }, 'location-1'))
+
+    expect(result).toEqual({
+      updated: 1,
+      locationIds: ['location-1'],
+    })
+    expect(sharedMock.generateLabeledImageToCos).toHaveBeenCalledTimes(1)
+    expect(prismaMock.locationImage.update).toHaveBeenCalledTimes(1)
+    expect(prismaMock.locationImage.update).toHaveBeenCalledWith({
+      where: { id: 'location-image-1' },
+      data: { imageUrl: 'cos/location-generated-1.png' },
+    })
+  })
 })

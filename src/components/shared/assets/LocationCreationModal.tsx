@@ -226,6 +226,7 @@ export function LocationCreationModal({
                 }
                 await generateProjectLocation.mutateAsync({
                     locationId: createdLocationId,
+                    artStyle,
                     count: locationGenerationCount,
                 })
             }
@@ -285,27 +286,28 @@ export function LocationCreationModal({
                             />
                         </div>
 
-                        {/* 风格选择 */}
-                        <div className="space-y-2">
-                            <label className="glass-field-label block">
-                                {t('artStyle.title')}
-                            </label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {ART_STYLES.map((style) => (
-                                    <button
-                                        key={style.value}
-                                        type="button"
-                                        onClick={() => setArtStyle(style.value)}
-                                        className={`glass-btn-base px-3 py-2 rounded-lg text-sm border transition-all justify-start ${artStyle === style.value
-                                            ? 'glass-btn-tone-info border-[var(--glass-stroke-focus)]'
-                                            : 'glass-btn-soft border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)]'
-                                            }`}
-                                    >
-                                        <span>{style.label}</span>
-                                    </button>
-                                ))}
+                        {mode === 'asset-hub' && (
+                            <div className="space-y-2">
+                                <label className="glass-field-label block">
+                                    {t('artStyle.title')}
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {ART_STYLES.map((style) => (
+                                        <button
+                                            key={style.value}
+                                            type="button"
+                                            onClick={() => setArtStyle(style.value)}
+                                            className={`glass-btn-base px-3 py-2 rounded-lg text-sm border transition-all justify-start ${artStyle === style.value
+                                                ? 'glass-btn-tone-info border-[var(--glass-stroke-focus)]'
+                                                : 'glass-btn-soft border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)]'
+                                                }`}
+                                        >
+                                            <span>{style.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* AI 设计区域 */}
                         <div className="glass-surface-soft rounded-xl p-4 space-y-3 border border-[var(--glass-stroke-base)]">

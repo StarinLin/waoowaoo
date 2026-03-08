@@ -55,6 +55,10 @@ describe('api specific - novel promotion location style forwarding', () => {
 
     const res = await mod.POST(req, { params: Promise.resolve({ projectId: 'project-1' }) })
     expect(res.status).toBe(200)
+    const createManyArg = prismaMock.locationImage.createMany.mock.calls[0]?.[0] as {
+      data?: Array<{ imageIndex: number }>
+    } | undefined
+    expect(createManyArg?.data?.map((item) => item.imageIndex)).toEqual([0])
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

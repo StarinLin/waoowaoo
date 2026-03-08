@@ -50,6 +50,10 @@ describe('api specific - asset hub location create', () => {
 
     const res = await mod.POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
+    const createManyArg = prismaMock.globalLocationImage.createMany.mock.calls[0]?.[0] as {
+      data?: Array<{ imageIndex: number }>
+    } | undefined
+    expect(createManyArg?.data?.map((item) => item.imageIndex)).toEqual([0])
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

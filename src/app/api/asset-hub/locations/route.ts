@@ -45,7 +45,9 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
     const body = await request.json()
     const { name, summary, folderId, artStyle } = body
-    const count = normalizeImageGenerationCount('location', (body as Record<string, unknown>).count)
+    const count = Object.prototype.hasOwnProperty.call(body as Record<string, unknown>, 'count')
+        ? normalizeImageGenerationCount('location', (body as Record<string, unknown>).count)
+        : 1
 
     if (!name) {
         throw new ApiError('INVALID_PARAMS')

@@ -37,18 +37,18 @@ No need to clone the repository. Just download and run:
 
 ```bash
 # Download docker-compose.yml
-wget https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
-
-# Replace local build with pre-built image
-sed -i 's|build: \.|image: ghcr.io/saturndec/waoowaoo:latest|' docker-compose.yml
+curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
 
 # Start all services
 docker compose up -d
 ```
 
-To update:
+> ⚠️ This is a beta version. Database is not compatible between versions. To upgrade, clear old data first:
+
 ```bash
-docker compose pull && docker compose up -d
+docker compose down -v
+curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
+docker compose up -d
 ```
 
 ### Method 2: Clone & Docker Build (Full Control)

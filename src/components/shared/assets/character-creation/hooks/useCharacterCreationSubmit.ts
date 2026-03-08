@@ -167,7 +167,6 @@ export function useCharacterCreationSubmit({
         await createProjectCharacter.mutateAsync({
           name: name.trim(),
           description: finalDescription || t('character.defaultDescription', { name: name.trim() }),
-          artStyle,
           generateFromReference: true,
           referenceImageUrls,
           customDescription: referenceSubMode === 'extract' ? finalDescription : undefined,
@@ -260,7 +259,6 @@ export function useCharacterCreationSubmit({
         await createProjectCharacter.mutateAsync({
           name: name.trim(),
           description: description.trim(),
-          artStyle,
         })
       }
       onSuccess()
@@ -322,7 +320,6 @@ export function useCharacterCreationSubmit({
         const result = await createProjectCharacter.mutateAsync({
           name: name.trim(),
           description: description.trim(),
-          artStyle,
         }) as CreatedCharacterResponse
         const createdCharacterId = result.character?.id
         const createdAppearanceId = result.character?.appearances?.[0]?.id

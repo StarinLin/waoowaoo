@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   countGeneratedImageSlots,
+  resolveDisplayImageSlots,
+  resolveGroupedImageSlotPhase,
   resolveImageSlotPhase,
   shouldShowImageSlotGrid,
 } from '@/lib/image-generation/slot-state'
@@ -19,6 +21,59 @@ describe('image slot state', () => {
     expect(resolveImageSlotPhase({ imageUrl: 'a.png' }, true)).toBe('regenerating')
     expect(resolveImageSlotPhase({ imageUrl: null }, false)).toBe('idle-empty')
     expect(resolveImageSlotPhase({ imageUrl: 'a.png' }, false)).toBe('idle-filled')
+  })
+
+  it('keeps completed filled slots idle while the group still has empty pending slots', () => {
+    expect(resolveGroupedImageSlotPhase(
+      { imageUrl: 'a.png' },
+      { isGroupRunning: true, isSlotRunning: false, hasPendingEmptySlots: true },
+    )).toBe('idle-filled')
+
+    expect(resolveGroupedImageSlotPhase(
+      { imageUrl: null },
+      { isGroupRunning: true, isSlotRunning: true, hasPendingEmptySlots: true },
+    )).toBe('generating')
+  })
+
+  it('hides legacy empty slots when the location is idle', () => {
+    const displaySlots = resolveDisplayImageSlots([
+      { imageUrl: 'a.png' },
+      { imageUrl: null },
+      { imageUrl: null },
+    ], {
+      hasRunningTask: false,
+      requestedCount: 1,
+    })
+
+    expect(displaySlots).toHaveLength(1)
+    expect(displaySlots[0]?.imageUrl).toBe('a.png')
+  })
+
+  it('shows only one slot while running a single-image location generation', () => {
+    const displaySlots = resolveDisplayImageSlots([
+      { imageUrl: null },
+      { imageUrl: null },
+      { imageUrl: null },
+    ], {
+      hasRunningTask: true,
+      requestedCount: 1,
+    })
+
+    expect(displaySlots).toHaveLength(1)
+  })
+
+  it('shows requested placeholders while running a multi-image location generation', () => {
+    const displaySlots = resolveDisplayImageSlots([
+      { imageUrl: 'a.png' },
+      { imageUrl: null },
+      { imageUrl: null },
+      { imageUrl: null },
+    ], {
+      hasRunningTask: true,
+      requestedCount: 4,
+    })
+
+    expect(displaySlots).toHaveLength(4)
   })
 
   it('shows slot grid only after generation is active or meaningful', () => {
