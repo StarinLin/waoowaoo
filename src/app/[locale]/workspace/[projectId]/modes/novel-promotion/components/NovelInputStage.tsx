@@ -425,6 +425,9 @@ AI 将根据您的文本智能分析：
           })}
         </p>
         <p className="text-xs text-[var(--glass-text-tertiary)] mt-1 text-center">
+          {t("storyInput.assetLibraryRatioNote")}
+        </p>
+        <p className="text-xs text-[var(--glass-text-tertiary)] mt-1 text-center">
           {t("storyInput.moreConfig")}
         </p>
       </div>

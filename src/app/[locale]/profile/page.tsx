@@ -80,7 +80,6 @@ export default function ProfilePage() {
                   <span className="font-medium">{t('billingRecords')}</span>
                 </button>
               </nav>
-
               {/* 退出登录 */}
               <button
                 onClick={() => signOut({ callbackUrl: '/' })}

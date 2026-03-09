@@ -1,9 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { useTranslations, useLocale } from 'next-intl'
-import { USER_FEEDBACK_FORM_URL } from '@/lib/feedback'
-import { buildFeedbackLog, type FeedbackContextStage } from '@/lib/feedback-log'
+import { useTranslations } from 'next-intl'
 
 export type LLMStageViewStatus =
   | 'pending'
@@ -41,9 +39,6 @@ export type LLMStageStreamCardProps = {
   smoothStreaming?: boolean
   errorMessage?: string
   topRightAction?: ReactNode
-  feedbackStage?: FeedbackContextStage
-  projectId?: string
-  episodeId?: string | null
 }
 
 const PROGRESS_KEY_PREFIX = 'progress.'
@@ -187,13 +182,8 @@ export default function LLMStageStreamCard({
   smoothStreaming = true,
   errorMessage,
   topRightAction,
-  feedbackStage,
-  projectId,
-  episodeId,
 }: LLMStageStreamCardProps) {
   const t = useTranslations('progress')
-  const locale = useLocale()
-  const feedbackLocale: 'zh' | 'en' = locale === 'en' ? 'en' : 'zh'
 
   const resolveProgressText = useCallback((value: string | undefined, fallbackKey: string): string => {
     const raw = typeof value === 'string' ? value.trim() : ''
@@ -398,34 +388,6 @@ export default function LLMStageStreamCard({
               <span className="text-base">⚠️</span>
               <span className="text-sm font-medium">{errorMessage}</span>
             </div>
-            {feedbackStage && projectId && (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--glass-text-secondary)]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const log = buildFeedbackLog({
-                      locale: feedbackLocale,
-                      projectId,
-                      episodeId: episodeId ?? undefined,
-                      stage: feedbackStage,
-                      errorMessage,
-                    })
-                    void navigator.clipboard.writeText(log)
-                  }}
-                  className="glass-btn-base glass-btn-secondary rounded-md px-2 py-1 text-[11px]"
-                >
-                  {t('runConsole.copyErrorDetail')}
-                </button>
-                <a
-                  href={USER_FEEDBACK_FORM_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="glass-btn-base glass-btn-primary rounded-md px-2 py-1 text-[11px]"
-                >
-                  {t('runConsole.openFeedbackForm')}
-                </a>
-              </div>
-            )}
           </div>
         )}
       </header>

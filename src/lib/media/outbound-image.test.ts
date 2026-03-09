@@ -93,6 +93,37 @@ describe('outbound-image normalization', () => {
     expect(dataUrl).toBe('data:image/png;base64,AQID')
   })
 
+  it('sniffs png mime when upstream returns application/octet-stream', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/octet-stream' }),
+      arrayBuffer: async () => Uint8Array.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        0x00, 0x00, 0x00, 0x0d,
+      ]).buffer,
+    } as Response)
+
+    const dataUrl = await normalizeToBase64ForGeneration('images/direct.png')
+    expect(dataUrl).toBe('data:image/png;base64,iVBORw0KGgoAAAAN')
+  })
+
+  it('sniffs jpeg mime when upstream returns application/octet-stream', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/octet-stream' }),
+      arrayBuffer: async () => Uint8Array.from([
+        0xff, 0xd8, 0xff, 0xe0,
+        0x00, 0x10, 0x4a, 0x46,
+        0x49, 0x46, 0x00, 0x01,
+      ]).buffer,
+    } as Response)
+
+    const dataUrl = await normalizeToBase64ForGeneration('images/direct.jpg')
+    expect(dataUrl).toBe('data:image/jpeg;base64,/9j/4AAQSkZJRgAB')
+  })
+
   it('normalizes references with dedupe and failure isolation', async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (String(url).includes('/api/bad.png')) {

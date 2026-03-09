@@ -169,7 +169,7 @@ export default function CharacterCreationForm({
         </div>
       )}
 
-      {!isSubAppearance && (
+      {mode === 'asset-hub' && !isSubAppearance && (
         <div className="space-y-2">
           <label className="glass-field-label block">
             {t('artStyle.title')}

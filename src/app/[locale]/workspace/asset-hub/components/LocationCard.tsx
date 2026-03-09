@@ -20,8 +20,8 @@ import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
 import {
   countGeneratedImageSlots,
-  resolveImageSlotPhase,
-  shouldShowImageSlotGrid,
+  resolveGroupedImageSlotPhase,
+  resolveDisplayImageSlots,
 } from '@/lib/image-generation/slot-state'
 import { AppIcon } from '@/components/ui/icons'
 
@@ -72,10 +72,7 @@ export function LocationCard({ location, onImageClick, onImageEdit, onEdit }: Lo
   // 解析图片
   const orderedImages = [...(location.images || [])].sort((left, right) => left.imageIndex - right.imageIndex)
   const imagesWithUrl = orderedImages.filter((img) => img.imageUrl)
-  const totalImageCount = orderedImages.length
   const generatedImageCount = countGeneratedImageSlots(orderedImages)
-  const hasAnyImageError = orderedImages.some((img) => !!(img.lastError || img.imageErrorMessage))
-  const hasMultipleImages = totalImageCount > 1
   const selectedImage = orderedImages.find((img) => img.isSelected)
   const serverSelectedIndex = selectedImage?.imageIndex ?? null
   const effectiveSelectedIndex = serverSelectedIndex
@@ -93,6 +90,12 @@ export function LocationCard({ location, onImageClick, onImageEdit, onEdit }: Lo
   const serverTaskRunning = (location.images || []).some((image) => image.imageTaskRunning)
   const transientSubmitting = generateImage.isPending
   const isTaskRunning = serverTaskRunning || transientSubmitting
+  const displaySelectionImages = resolveDisplayImageSlots(orderedImages, {
+    hasRunningTask: isTaskRunning,
+    requestedCount: generationCount,
+  })
+  const displaySlotCount = displaySelectionImages.length
+  const hasMultipleImages = generatedImageCount > 1
   const displayTaskPresentation = isTaskRunning
     ? resolveTaskPresentationState({
       phase: 'processing',
@@ -194,14 +197,9 @@ export function LocationCard({ location, onImageClick, onImageEdit, onEdit }: Lo
   }
 
   // 多图选择模式
-  if (shouldShowImageSlotGrid({
-    totalSlotCount: totalImageCount,
-    generatedCount: generatedImageCount,
-    hasRunningTask: isTaskRunning,
-    hasAnyError: hasAnyImageError,
-  })) {
-    const selectionStatusText = isTaskRunning || generatedImageCount < totalImageCount
-      ? tAssets('image.generatedProgress', { generated: generatedImageCount, total: totalImageCount })
+  if (displaySlotCount > 1) {
+    const selectionStatusText = isTaskRunning || generatedImageCount < displaySlotCount
+      ? tAssets('image.generatedProgress', { generated: generatedImageCount, total: displaySlotCount })
       : effectiveSelectedIndex !== null
         ? tAssets('image.optionSelected', { number: effectiveSelectedIndex + 1 })
         : tAssets('image.selectFirst')
@@ -261,9 +259,20 @@ export function LocationCard({ location, onImageClick, onImageEdit, onEdit }: Lo
 
         {/* 图片列表 */}
         <div className="grid grid-cols-3 gap-3">
-          {orderedImages.map((img) => {
+          {displaySelectionImages.map((img) => {
             const isThisSelected = img.isSelected
-            const phase = resolveImageSlotPhase({ imageUrl: img.imageUrl }, isTaskRunning || !!img.imageTaskRunning)
+            const hasPendingEmptySlots = isTaskRunning && generatedImageCount < displaySlotCount
+            const slotTaskRunning = hasPendingEmptySlots
+              ? !img.imageUrl && isTaskRunning
+              : !!img.imageTaskRunning
+            const phase = resolveGroupedImageSlotPhase(
+              { imageUrl: img.imageUrl },
+              {
+                isGroupRunning: isTaskRunning,
+                isSlotRunning: slotTaskRunning,
+                hasPendingEmptySlots,
+              },
+            )
             const imageError = resolveErrorDisplay(img.lastError || {
               code: img.imageErrorMessage || null,
               message: img.imageErrorMessage || null,

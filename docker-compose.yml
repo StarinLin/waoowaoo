@@ -60,22 +60,9 @@ services:
       retries: 30
       start_period: 10s
 
-  minio-init:
-    image: minio/mc:RELEASE.2025-02-21T16-00-46Z
-    container_name: waoowaoo-minio-init
-    depends_on:
-      minio:
-        condition: service_healthy
-    restart: "no"
-    entrypoint: >
-      /bin/sh -c "
-        mc alias set local http://minio:9000 minioadmin minioadmin &&
-        mc mb --ignore-existing local/waoowaoo
-      "
-
   # ==================== App (Next.js + Workers) ====================
   app:
-    build: .
+    image: ghcr.io/saturndec/waoowaoo:latest
     container_name: waoowaoo-app
     restart: unless-stopped
     environment:
@@ -140,8 +127,6 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     command: >
       sh -c "
         npx prisma db push --skip-generate &&

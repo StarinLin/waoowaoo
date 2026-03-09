@@ -4,12 +4,12 @@ import type { Location, Project } from '@/types/project'
 import { queryKeys } from '../keys'
 import type { ProjectAssetsData } from '../hooks/useProjectAssets'
 import {
-  clearTaskTargetOverlay,
-  upsertTaskTargetOverlay,
+    clearTaskTargetOverlay,
+    upsertTaskTargetOverlay,
 } from '../task-target-overlay'
 import {
-  invalidateQueryTemplates,
-  requestJsonWithError,
+    invalidateQueryTemplates,
+    requestJsonWithError,
 } from './mutation-shared'
 
 interface SelectProjectLocationImageContext {
@@ -78,21 +78,23 @@ export function useGenerateProjectLocationImage(projectId: string) {
         mutationFn: async ({
             locationId,
             imageIndex,
+            artStyle,
             count,
         }: {
             locationId: string
             imageIndex?: number
+            artStyle?: string
             count?: number
         }) => {
             return await requestJsonWithError(`/api/novel-promotion/${projectId}/generate-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'location',
-                    id: locationId,
+                body: JSON.stringify(buildProjectLocationGenerateImageBody({
+                    locationId,
                     imageIndex,
+                    artStyle,
                     count,
-                })
+                }))
             }, 'Failed to generate image')
         },
         onMutate: ({ locationId }) => {
@@ -112,6 +114,21 @@ export function useGenerateProjectLocationImage(projectId: string) {
         },
         onSettled: invalidateProjectAssets,
     })
+}
+
+export function buildProjectLocationGenerateImageBody(input: {
+    locationId: string
+    imageIndex?: number
+    artStyle?: string
+    count?: number
+}) {
+    return {
+        type: 'location' as const,
+        id: input.locationId,
+        imageIndex: input.imageIndex,
+        artStyle: input.artStyle,
+        count: input.count,
+    }
 }
 
 /**

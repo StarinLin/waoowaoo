@@ -8,7 +8,10 @@ import type { TaskPresentationState } from '@/lib/task/presentation'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import { AppIcon } from '@/components/ui/icons'
 import ImageGenerationSlotOverlay from '@/components/image-generation/ImageGenerationSlotOverlay'
-import { resolveImageSlotPhase } from '@/lib/image-generation/slot-state'
+import {
+  countGeneratedImageSlots,
+  resolveGroupedImageSlotPhase,
+} from '@/lib/image-generation/slot-state'
 
 type SelectionImage = {
   id: string
@@ -50,14 +53,26 @@ export default function LocationImageList(props: LocationImageListProps) {
   const t = useTranslations('assets')
 
   if (props.mode === 'selection') {
+    const generatedCount = countGeneratedImageSlots(props.images)
+    const hasPendingEmptySlots = props.isGroupTaskRunning && generatedCount < props.images.length
+
     return (
       <div className="grid grid-cols-3 gap-3">
         {props.images.map((img) => {
           const isThisSelected = props.selectedImageId
             ? img.id === props.selectedImageId
             : img.isSelected
-          const isThisTaskRunning = props.isImageTaskRunning(img.imageIndex) || props.isGroupTaskRunning
-          const phase = resolveImageSlotPhase({ imageUrl: img.imageUrl }, isThisTaskRunning)
+          const slotTaskRunning =
+            props.isImageTaskRunning(img.imageIndex) ||
+            (props.isGroupTaskRunning && !img.imageUrl)
+          const phase = resolveGroupedImageSlotPhase(
+            { imageUrl: img.imageUrl },
+            {
+              isGroupRunning: props.isGroupTaskRunning,
+              isSlotRunning: slotTaskRunning,
+              hasPendingEmptySlots,
+            },
+          )
           const imageError = resolveErrorDisplay(img.lastError || {
             code: img.imageErrorMessage || null,
             message: img.imageErrorMessage || null,
@@ -84,7 +99,7 @@ export default function LocationImageList(props: LocationImageListProps) {
                   />
                 ) : (
                   <div className="flex min-h-[88px] items-center justify-center bg-[var(--glass-bg-muted)]">
-                    {imageError && !isThisTaskRunning ? (
+                    {imageError && phase !== 'generating' && phase !== 'regenerating' ? (
                       <div className="flex flex-col items-center justify-center px-3 py-6 text-center">
                         <AppIcon name="alert" className="mb-2 h-6 w-6 text-[var(--glass-tone-danger-fg)]" />
                         <span className="text-xs font-medium text-[var(--glass-tone-danger-fg)]">{t('common.generateFailed')}</span>
@@ -119,11 +134,11 @@ export default function LocationImageList(props: LocationImageListProps) {
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (!isThisTaskRunning && img.imageUrl) {
+                    if (phase !== 'generating' && phase !== 'regenerating' && img.imageUrl) {
                       props.onSelectImage?.(props.locationId, isThisSelected ? null : img.imageIndex)
                     }
                   }}
-                  disabled={isThisTaskRunning || !img.imageUrl}
+                  disabled={phase === 'generating' || phase === 'regenerating' || !img.imageUrl}
                   className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${isThisSelected
                     ? 'bg-[var(--glass-tone-success-fg)] text-white'
                     : 'bg-[var(--glass-bg-surface-strong)] hover:bg-[var(--glass-accent-from)] hover:text-white'

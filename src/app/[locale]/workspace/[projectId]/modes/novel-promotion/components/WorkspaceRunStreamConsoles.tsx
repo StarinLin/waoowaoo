@@ -32,8 +32,6 @@ type RunStreamState = {
     payload: Record<string, unknown> | null
     errorMessage: string
   }>
-  projectId?: string
-  episodeId?: string | null
 }
 
 interface WorkspaceRunStreamConsolesProps {
@@ -43,8 +41,6 @@ interface WorkspaceRunStreamConsolesProps {
   scriptToStoryboardConsoleMinimized: boolean
   onStoryToScriptMinimizedChange: (next: boolean) => void
   onScriptToStoryboardMinimizedChange: (next: boolean) => void
-  projectId: string
-  episodeId?: string | null
   hideMinimizedBadges?: boolean
 }
 
@@ -55,8 +51,6 @@ export default function WorkspaceRunStreamConsoles({
   scriptToStoryboardConsoleMinimized,
   onStoryToScriptMinimizedChange,
   onScriptToStoryboardMinimizedChange,
-  projectId,
-  episodeId,
   hideMinimizedBadges,
 }: WorkspaceRunStreamConsolesProps) {
   const t = useTranslations('progress')
@@ -174,9 +168,6 @@ export default function WorkspaceRunStreamConsoles({
               showCursor={storyToScriptShowCursor}
               autoScroll={storyToScriptStream.selectedStep?.id === storyToScriptStream.activeStepId}
               errorMessage={storyToScriptStream.errorMessage}
-              feedbackStage="assets"
-              projectId={projectId}
-              episodeId={episodeId}
               topRightAction={(
                 <div className="flex items-center gap-2">
                   <button
@@ -229,9 +220,6 @@ export default function WorkspaceRunStreamConsoles({
               showCursor={scriptToStoryboardShowCursor}
               autoScroll={scriptToStoryboardStream.selectedStep?.id === scriptToStoryboardStream.activeStepId}
               errorMessage={scriptToStoryboardStream.errorMessage}
-              feedbackStage="storyboard"
-              projectId={projectId}
-              episodeId={episodeId}
               topRightAction={(
                 <div className="flex items-center gap-2">
                   <button
