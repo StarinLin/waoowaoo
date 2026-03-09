@@ -1,6 +1,6 @@
 import { BaseVideoGenerator, type GenerateResult, type VideoGenerateParams } from '../base'
 import { getProviderConfig } from '@/lib/api-config'
-import { imageUrlToBase64 } from '@/lib/cos'
+import { getImageBase64Cached } from '@/lib/image-cache'
 import { streamFlow2APIChatCompletion, type Flow2APIChatMessage } from '@/lib/flow2api/client'
 import {
   extractFlow2APISuccessUrl,
@@ -30,7 +30,7 @@ async function normalizeImageUrlToDataUrl(imageUrl: string): Promise<string> {
   if (!trimmed) {
     throw new Error('FLOW2API_VIDEO_IMAGE_URL_REQUIRED')
   }
-  return trimmed.startsWith('data:') ? trimmed : await imageUrlToBase64(trimmed)
+  return trimmed.startsWith('data:') ? trimmed : await getImageBase64Cached(trimmed, { logPrefix: '[Flow2API Video]' })
 }
 
 export class Flow2APIVideoGenerator extends BaseVideoGenerator {

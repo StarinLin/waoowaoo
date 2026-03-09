@@ -371,11 +371,11 @@ export async function chatCompletion(
 
       const isOpenRouter = !!providerConfig.baseUrl?.includes('openrouter')
       const providerName = isOpenRouter ? 'openrouter' : 'openai_compatible'
-      const useResponsesApi = providerKey === 'openai-compatible' && isOpenAIResponsesApiMode(config.apiMode)
+      const useResponsesApi = providerKey === 'openai-compatible' && isOpenAIResponsesApiMode(providerConfig.apiMode)
       if (useResponsesApi) {
         const client = new OpenAI({
-          baseURL: config.baseUrl,
-          apiKey: config.apiKey,
+          baseURL: providerConfig.baseUrl,
+          apiKey: providerConfig.apiKey,
         })
         const response = await client.responses.create(
           buildOpenAIResponsesRequest(resolvedModelId, messages, options),

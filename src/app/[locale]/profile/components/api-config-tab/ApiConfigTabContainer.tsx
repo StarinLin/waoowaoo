@@ -240,19 +240,6 @@ export function ApiConfigTabContainer() {
     doAddProvider()
   }, [doAddProvider])
 
-  const handleCancelAddGeminiProvider = () => {
-    setNewGeminiProvider({
-      name: '',
-      baseUrl: '',
-      apiKey: '',
-      apiType: 'gemini-compatible',
-      apiMode: 'gemini-sdk',
-    })
-    setTestStatus('idle')
-    setTestSteps([])
-    setShowAddGeminiProvider(false)
-  }
-
   const handleWorkflowConcurrencyChange = useCallback(
     (field: 'analysis' | 'image' | 'video', rawValue: string) => {
       const parsed = Number.parseInt(rawValue, 10)
