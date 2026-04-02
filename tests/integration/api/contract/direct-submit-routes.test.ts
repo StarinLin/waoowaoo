@@ -4,7 +4,6 @@ import { buildMockRequest } from '../../../helpers/request'
 
 type AuthState = {
   authenticated: boolean
-  projectMode: 'novel-promotion' | 'other'
 }
 
 type SubmitResult = {
@@ -28,7 +27,6 @@ type DirectRouteCase = {
 
 const authState = vi.hoisted<AuthState>(() => ({
   authenticated: true,
-  projectMode: 'novel-promotion',
 }))
 
 const submitTaskMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<SubmitResult>>())
@@ -218,14 +216,14 @@ vi.mock('@/lib/api-auth', () => {
       if (!authState.authenticated) return unauthorized()
       return {
         session: { user: { id: 'user-1' } },
-        project: { id: projectId, userId: 'user-1', mode: authState.projectMode },
+        project: { id: projectId, userId: 'user-1' },
       }
     },
     requireProjectAuthLight: async (projectId: string) => {
       if (!authState.authenticated) return unauthorized()
       return {
         session: { user: { id: 'user-1' } },
-        project: { id: projectId, userId: 'user-1', mode: authState.projectMode },
+        project: { id: projectId, userId: 'user-1' },
       }
     },
   }
@@ -534,7 +532,6 @@ describe('api contract - direct submit routes (behavior)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authState.authenticated = true
-    authState.projectMode = 'novel-promotion'
     let seq = 0
     submitTaskMock.mockImplementation(async () => ({
       taskId: `task-${++seq}`,
