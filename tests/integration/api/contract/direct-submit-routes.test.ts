@@ -393,11 +393,32 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
   },
   {
     routeFile: 'src/app/api/novel-promotion/[projectId]/generate-video/route.ts',
-    body: { videoModel: 'fal::video-model', storyboardId: 'storyboard-1', panelIndex: 0 },
+    body: {
+      videoModel: 'ark::doubao-seedance-2-0-260128',
+      storyboardId: 'storyboard-1',
+      panelIndex: 0,
+      generationOptions: {
+        resolution: '720p',
+        duration: 5,
+      },
+      firstLastFrame: {
+        flModel: 'ark::doubao-seedance-2-0-260128',
+      },
+    },
     params: { projectId: 'project-1' },
     expectedTaskType: TASK_TYPE.VIDEO_PANEL,
     expectedTargetType: 'NovelPromotionPanel',
     expectedProjectId: 'project-1',
+    expectedPayloadSubset: {
+      videoModel: 'ark::doubao-seedance-2-0-260128',
+      generationOptions: {
+        resolution: '720p',
+        duration: 5,
+      },
+      firstLastFrame: {
+        flModel: 'ark::doubao-seedance-2-0-260128',
+      },
+    },
   },
   {
     routeFile: 'src/app/api/novel-promotion/[projectId]/insert-panel/route.ts',

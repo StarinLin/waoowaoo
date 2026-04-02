@@ -146,13 +146,15 @@ export default function StoryInputComposer({
               options={styleOptions}
             />
           </div>
-          <div className="w-[152px] flex-shrink-0">
-            <StylePresetSelector
-              value={stylePresetValue}
-              onChange={onStylePresetChange}
-              options={stylePresetOptions}
-            />
-          </div>
+          {stylePresetOptions.length > 0 ? (
+            <div className="w-[152px] flex-shrink-0">
+              <StylePresetSelector
+                value={stylePresetValue}
+                onChange={onStylePresetChange}
+                options={stylePresetOptions}
+              />
+            </div>
+          ) : null}
         </div>
         <div className="ml-auto flex min-w-max items-center gap-2">
           {secondaryActions}
